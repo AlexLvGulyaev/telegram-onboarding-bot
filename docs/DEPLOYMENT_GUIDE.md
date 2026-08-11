@@ -111,7 +111,9 @@ docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training
 | `/set_topic <id>` | Сделать тему активной по умолчанию |
 | `/delete_topic <id>` | Удалить тему |
 
-Добавленная тема сохраняется как `topics/<id>.json` и сразу доступна для обучения.
+Добавленная через `/new_topic` тема сохраняется в PostgreSQL (`training_topics`)
+и сразу доступна для обучения после активации через `/set_topic <id>`.
+Каталог `topics/` содержит только темы-заготовки, поставляемые с репозиторием.
 
 ## ✏️ 6. Добавление новой темы вручную
 
