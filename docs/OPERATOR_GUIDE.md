@@ -28,6 +28,8 @@
 > ⚠️ Команды от не-администратора отклоняются сообщением «Эта команда доступна
 > только администратору». См. [🔐 `SECURITY_NOTES.md`](SECURITY_NOTES.md).
 
+![Админ-команда от не-администратора отклоняется](screenshots/TOB_admin_denied.png)
+
 ---
 
 ## 🗂️ 3. Управление темами
@@ -54,6 +56,8 @@
 Тема сохраняется в PostgreSQL (`training_topics`) и сразу доступна для
 обучения после активации.
 
+![Создание темы через /new_topic: пошаговый FSM-диалог](screenshots/TOB_admin_new_topic.png)
+
 ### 3.2. Активная тема
 
 - `/set_topic <id>` делает тему активной по умолчанию — все новые сессии
@@ -61,6 +65,8 @@
 - Активная тема хранится в `bot_settings` и **восстанавливается после
   пересборки контейнера** — повторно выбирать её не нужно.
 - `/list_topics` показывает все темы с отметкой активной.
+
+![Управление темами: /list_topics и /set_topic](screenshots/TOB_admin_list_set.png)
 
 ### 3.3. Удаление темы
 
@@ -82,6 +88,8 @@
 > см. открытый вопрос в
 > [📋 `IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 
+![Смена темы: /topic → /topic <id> → /start по новой теме](screenshots/TOB_ui_topic_switch.png)
+
 ---
 
 ## 💾 5. Просмотр результатов
@@ -98,6 +106,8 @@ docker compose exec db psql -U postgres -d onboarding -c \
   "SELECT id, employee_name, topic, total_questions, correct_answers, score_percent, created_at
    FROM training_results ORDER BY id DESC LIMIT 5;"
 ```
+
+![Записи сессий в PostgreSQL (таблица training_results)](screenshots/TOB_result_db_rows.png)
 
 ---
 
