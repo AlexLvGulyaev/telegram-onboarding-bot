@@ -215,8 +215,24 @@ LLM не всегда строго следует инструкциям, поэ
 
 1. Скопировать `prompts/v1/` в `prompts/v2/`.
 2. Внести изменения в `system.md` и/или `response-schema.json`.
-3. В конфигах тем, которые должны использовать новую версию, изменить `prompts_version` на `v2` (для тем в БД — пересоздать тему или изменить через `/new_topic`).
+3. Перевести нужные темы на `v2` — см. ниже.
 4. Протестировать E2E и зафиксировать результаты в [🧪 `docs/TESTING.md`](TESTING.md).
+
+### Как сменить `prompts_version` у темы
+
+Темы хранятся в PostgreSQL (`training_topics`); `prompts_version` — колонка. **В боте нет команды правки существующей темы** (`/new_topic` не запрашивает версию и захардкожен в `"v1"`, а правка `topics/<id>.json` + рестарт не обновляет существующую тему — сидирование идемпотентно и пропускает имеющиеся id). Доступные способы:
+
+- **Удалить и пересидировать** (рекомендуется для тем-заготовок):
+  1. `/delete_topic <id>` — удаляет тему из БД.
+  2. В `topics/<id>.json` поставить `"prompts_version": "v2"`.
+  3. `docker compose restart bot` — сидирование создаст тему заново с `v2`.
+- **Прямой SQL** (для тем, созданных через `/new_topic`, без файла-заготовки):
+  ```bash
+  docker compose exec db psql -U postgres -d onboarding -c \
+    "UPDATE training_topics SET prompts_version='v2' WHERE id='<id>';"
+  ```
+
+> ⚠️ Это известное ограничение MVP: нет команды `/edit_topic` и шага `prompts_version` в `/new_topic`. См. [📋 `docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), «Не закрыто».
 
 ---
 
