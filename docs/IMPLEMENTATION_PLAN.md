@@ -1,177 +1,195 @@
 # 📋 Telegram Onboarding Bot · IMPLEMENTATION_PLAN
 
-**Проект:** telegram-onboarding-bot  
-**Дата:** 2026-08-11  
-**Статус:** Улучшенная универсальная версия реализована и запущена. Ожидается E2E-тестирование в Telegram.
+**Проект:** telegram-onboarding-bot
+**Дата:** 2026-08-11
+**Статус:** as-built. Универсальная архитектура тем и промптов реализована, E2E-дефекты устранены и подтверждены прогонами. До публикации остаётся Deployment Validation в чистом окружении.
 
 ---
 
-## 1. Цель
+## 🎯 1. Архитектура решения
 
-Упаковать исходный репозиторий урока PEcb07 как портфолио-кейс APL: выполнить домашнее задание, провести baseline-прогон, устранить выявленные дефекты, сделать бота универсальным (заменяемые промпты и темы) и опубликовать с полным комплектом документации.
-
-## 2. Архитектура решения
-
-```text
-┌─────────────┐     ┌─────────────┐     ┌─────────────────┐
-│   Telegram  │────▶│  aiogram    │────▶│  TrainingStates │
-│   client    │◀────│   handlers  │◀────│   (FSM)         │
-└─────────────┘     └─────────────┘     └─────────────────┘
-                          │
-                          ▼
-                   ┌─────────────────────┐
-                   │  TrainingService    │
-                   │  AITrainingService  │
-                   │  PromptLoader       │
-                   └─────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-   │  OpenAI API │  │   topics/   │  │  PostgreSQL │
-   └─────────────┘  │  prompts/   │  └─────────────┘
-                    └─────────────┘
+```mermaid
+flowchart TD
+    A[Сотрудник в Telegram] -->|/start, ответы| B[aiogram Bot]
+    B --> C[TrainingService]
+    C -->|LLM + JSON schema| D[OpenAI API]
+    C -->|промпт и схема| E["PromptLoader: prompts/v1/"]
+    C -->|draft| F[FSM MemoryStorage]
+    C -->|тема| G["TrainingTopicRepository
+    (training_topics / bot_settings)"]
+    C -->|результат| H[("PostgreSQL: training_results")]
+    D -->|Embeddings| C
 ```
 
-## 3. Состав компонентов
+---
 
-| Компонент | Назначение | Статус |
-|-----------|------------|--------|
-| `main.py` | Единственная точка входа: логирование, инициализация БД, запуск polling | ✅ |
-| `bot/handlers/onboarding.py` | Обработчики Telegram, FSM-состояния | ✅ |
-| `config/settings.py` | Pydantic Settings, переменные окружения, загрузка тем | ✅ |
-| `database/` | SQLAlchemy-модели, engine, session factory, repository | ✅ |
-| `schemas/` | Pydantic-схемы темы, черновика сессии и результата | ✅ |
-| `services/prompt_loader.py` | Загрузка и рендеринг версионированных промптов | ✅ |
-| `services/ai_training_service.py` | HTTP-клиент к OpenAI API, сборка сообщений | ✅ |
-| `services/training_service.py` | TrainingService: бизнес-логика сессии, guard-logic | ✅ |
-| `topics/` | Конфиги тем обучения | ✅ |
-| `prompts/` | Версионированные системные промпты и JSON Schema | ✅ |
-| `docker-compose.yml` | PostgreSQL + bot, healthcheck, depends_on, volume | ✅ |
-| `Dockerfile` | Сборка образа бота | ✅ |
+## 🧩 2. Состав компонентов
 
-## 4. Модель данных
+| Компонент | Файл | Назначение |
+|-----------|------|------------|
+| Точка входа | `main.py` | Запуск бота, инициализация БД, сидинг тем из `topics/`, восстановление активной темы |
+| Обработчики | `bot/handlers/onboarding.py` | `/start`, `/topic`, `/cancel`, FSM-сессия, guard-fallback, semantic-dedup |
+| Админ-роутер | `bot/handlers/admin.py` | `/new_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC по `ADMIN_USER_ID`) |
+| Клавиатуры | `bot/keyboards/common.py` | Reply-клавиатура «Отмена», удаление клавиатуры |
+| Middleware | `bot/middlewares/logging.py` | Логирование входящих сообщений |
+| Конфигурация | `config/settings.py` | Pydantic-settings из `.env` |
+| Схемы | `schemas/training.py` | `TrainingTopicConfig`, `TrainingSessionDraft`, `TrainingAssistantTurn`, `LLMContext` |
+| Сервис сессии | `services/training_service.py` | Бизнес-логика: фазы, оценка, дедупликация, guard-логика, подсчёт, сохранение |
+| AI-сервис | `services/ai_training_service.py` | HTTP-клиент OpenAI (Chat Completions + Embeddings), дедупликация по смыслу, guard-fallback |
+| Загрузчик промптов | `services/prompt_loader.py` | Загрузка и рендеринг версионированных промптов и JSON Schema |
+| Модели БД | `database/models.py` | `TrainingResult`, `TrainingTopic`, `BotSettings` |
+| Репозитории | `database/repository.py` | CRUD результатов, тем, настроек |
+| Инициализация БД | `database/db.py` | Async engine, session factory, `init_db` |
 
-**Таблица `training_results`:**
+---
+
+## 📐 3. Модель данных
+
+### 3.1. `training_results` — итог обучения
 
 | Поле | Тип | Описание |
 |------|-----|----------|
-| `id` | serial PK | Идентификатор |
-| `employee_name` | varchar(255) | Имя сотрудника |
-| `telegram_user_id` | bigint | ID пользователя Telegram |
-| `telegram_chat_id` | bigint | ID чата |
-| `topic` | varchar(255) | Тема обучения |
-| `total_questions` | int | Всего вопросов |
-| `correct_answers` | int | Правильных ответов |
-| `score_percent` | int | Процент |
-| `final_summary` | text | Итоговый комментарий LLM |
-| `created_at` | timestamp | Время создания |
+| `id` | `Integer` PK | Идентификатор |
+| `employee_name` | `String(255)` | Имя сотрудника |
+| `telegram_user_id` | `BigInteger` | ID пользователя Telegram |
+| `telegram_chat_id` | `BigInteger` | ID чата |
+| `topic` | `String(255)` | Название темы |
+| `total_questions` | `Integer` | Всего вопросов |
+| `correct_answers` | `Integer` | Правильных ответов |
+| `score_percent` | `Integer` | Процент |
+| `final_summary` | `Text` \| null | Итоговый комментарий LLM |
+| `total_tokens_spent` | `Integer` | Расход токенов за сессию |
+| `created_at` | `DateTime(tz)` | Время создания |
 
-## 5. Интеграции
+### 3.2. `training_topics` — темы обучения
 
-### 5.1. OpenAI API (HTTP)
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | `String(64)` PK | Идентификатор темы |
+| `name` | `String(255)` | Название |
+| `description` | `Text` \| null | Описание |
+| `material` | `Text` | Материал для обучения |
+| `prompts_version` | `String(32)` | Версия промпта (`v1`) |
+| `created_at` / `updated_at` | `DateTime(tz)` | Метки времени |
 
-- **Chat Completions** — основной ход диалога: `POST {OPENAI_BASE_URL}/chat/completions`,
-  модель из `OPENAI_MODEL`, `temperature=0.2`, `response_format=json_schema`
-  (схема из `prompts/<version>/response-schema.json`). Используется в
-  `AITrainingService.generate_turn()`.
-- **Embeddings** — дедупликация вопросов по смыслу: `POST {OPENAI_BASE_URL}/embeddings`,
-  модель `text-embedding-3-small`, косинусная близость, порог `0.72`.
+### 3.3. `bot_settings` — глобальные настройки
 
-### 5.2. Telegram Bot API
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | `Integer` PK | Идентификатор |
+| `active_topic_id` | `String(64)` \| null | Активная тема (глобально) |
+| `updated_at` | `DateTime(tz)` | Время обновления |
 
-- **Транспорт:** long-polling через aiogram 3.x (`dp.start_polling(bot)`).
-  Webhook не используется — публичный хост не требуется.
-- **Command surface:** `/start`, `/topic`, `/cancel` (пользователь);
-  `/admin`, `/new_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (админ).
-- **RBAC:** доступ к админ-командам по `message.from_user.id == ADMIN_USER_ID`.
+### 3.4. `TrainingSessionDraft` — состояние сессии (in-memory, FSM)
 
-### 5.3. PostgreSQL
+| Поле | Описание |
+|------|----------|
+| `employee_name` | Имя сотрудника |
+| `phase` | `collecting_name` / `learning` / `testing` / `completed` |
+| `total_questions` / `questions_answered` / `correct_answers` | Счётчики |
+| `current_question` | Текущий вопрос |
+| `asked_questions` | Заданные вопросы (для дедупликации) |
+| `last_answer_feedback` | Обратная связь по последнему ответу |
+| `final_summary` | Итоговая сводка |
+| `total_tokens_spent` | Расход токенов |
+| `turns_log` | Лог ходов (фаза, превью, токены) |
 
-- Async через SQLAlchemy 2.x + asyncpg (`DATABASE_URL`).
-- Таблицы: `training_results`, `training_topics`, `bot_settings`.
-- Volume `postgres_data` сохраняет данные между пересборками бота.
+---
 
-Полные контракты (endpoints, payload, схема ответа) — в `docs/API_CONTRACT.md`.
-Внешние интеграции верифицируются по официальной документации OpenAI и Telegram
-Bot API (правило external-integration SOT).
+## 🔌 4. Интеграции
 
-## 6. План реализации
+| Система | Тип | Данные |
+|---------|-----|--------|
+| Telegram Bot API | HTTP long polling | Входящие сообщения и ответы |
+| OpenAI API — Chat Completions | HTTP JSON, `response_format=json_schema` | Ход диалога, оценка, переходы фаз |
+| OpenAI API — Embeddings | HTTP JSON | Дедупликация вопросов (`text-embedding-3-small`, косинус ≥ 0.72) |
+| PostgreSQL | SQLAlchemy 2.x async (asyncpg) | Результаты, темы, настройки |
 
-### Этап 1. Анализ и ДЗ (✅ выполнен)
+Полные контракты — в [`docs/API_CONTRACT.md`](API_CONTRACT.md). Внешние интеграции верифицируются по официальной документации OpenAI и Telegram Bot API.
 
-- [x] Разобрать `main.py`, `handlers/onboarding.py`, `config/settings.py` и их связь.
-- [x] Разобрать `docker-compose.yml`: healthcheck, depends_on, volumes.
-- [x] Проанализировать системный промпт: выделить 5 правил и предложить 3 улучшения.
-- [x] Составить схему жизненного цикла сессии.
-- [x] Подготовить мини-отчёт про async/await и PostgreSQL vs SQLite.
+---
 
-### Этап 2. Baseline-запуск и тестирование (✅ выполнен)
+## 📅 5. План реализации
 
-- [x] Запустить локально через `docker compose up --build`.
-- [x] Протестировать бота в Telegram.
-- [x] Проверить сохранение результатов в PostgreSQL.
-- [x] Зафиксировать логи, findings и результаты в `docs/TESTING.md`.
+### 5.1. Этап 1 · Подготовка окружения
 
-**Baseline-findings (только из прогона с целевой моделью):**
-- F1. Базовая версия успешно сохраняет результат в PostgreSQL.
-- F2. Вопросы теста дублируются (вопросы 1 и 4 про одно и то же).
-- F3. Последний вопрос может быть не задан явно.
-- F4. Две точки входа (`main.py` и `bot/main.py`).
+- Создать `.env` на основе `.env.example`.
+- Получить `BOT_TOKEN` через [@BotFather](https://t.me/botfather).
+- Подготовить `OPENAI_API_KEY` и модель в аккаунте.
+- Указать `ADMIN_USER_ID` (Telegram user ID администратора).
+- Задать `ACTIVE_TOPIC` (id темы-заготовки из `topics/`) — начальная активная тема.
 
-### Этап 3. Архитектурное развитие (✅ выполнен)
+### 5.2. Этап 2 · Локальная проверка
 
-- [x] Унифицировать точку входа: оставить только `main.py`, перенести логику из `bot/main.py`.
-- [x] Вынести системный промпт в `prompts/v1/system.md`.
-- [x] Создать JSON Schema ответа LLM в `prompts/v1/response-schema.json`.
-- [x] Создать загрузчик промптов (`services/prompt_loader.py`).
-- [x] Создать универсальный конфиг темы в `topics/<id>.json` с полями `id`, `name`, `description`, `material`, `prompts_version`.
-- [x] Усилить промпт:
-  - чёткий триггер перехода к `testing`;
-  - запрет на дублирование вопросов;
-  - обязательное явное задание вопроса перед оценкой;
-  - корректный подсчёт `questions_answered` / `correct_answers`.
-- [x] Добавить guard-logic в `TrainingService` для контроля фаз и уникальности вопросов.
-- [x] Добавить Telegram-админку для создания/удаления/переключения тем без ручного JSON.
-- [ ] Добавить fallback при недоступности OpenAI API.
+- `docker compose up --build`.
+- Проверить логи: `Start polling for bot @<your_bot>`.
+- Пройти сценарий `/start` → имя → обучение → тест → итог в PostgreSQL.
+- Проверить сохранение: `SELECT count(*) FROM training_results;`.
 
-### Этап 4. Упаковка документации APL (в работе)
+### 5.3. Этап 3 · Развёртывание на VPS
 
-- [x] Дополнить `README.md` разделами про универсальные темы и промпты.
-- [x] Обновить `docs/ARCHITECTURE.md` под новую структуру.
-- [x] Обновить `docs/DEPLOYMENT_GUIDE.md` с учётом `ACTIVE_TOPIC`.
-- [x] Создать `docs/TESTING.md` с результатами baseline E2E.
-- [ ] Дополнить `docs/TESTING.md` результатами improved E2E.
-- [x] Обновить `README.md` и `docs/ARCHITECTURE.md` с разделом про админку.
-- [x] Обновить `docs/DEPLOYMENT_GUIDE.md` с `ADMIN_USER_ID`.
-- [x] Создать `docs/PROMPT_ARCHITECTURE.md`.
-- [x] Создать `docs/E2E_SCENARIOS.md` с чек-листом скриншотов.
-- [x] Создать `docs/BUSINESS_VALUE.md`.
-- [x] `docs/SECURITY_NOTES.md` — создан.
+- Подключиться по SSH, установить Docker и плагин Compose.
+- Клонировать репозиторий, заполнить `.env`.
+- `docker compose up --build -d`.
+- Проверить статус и логи.
 
-### Этап 5. Повторное тестирование улучшенной версии
+### 5.4. Этап 4 · Управление темами
 
-- [x] Запустить улучшенную версию локально.
-- [ ] Пройти E2E-прогон в Telegram для нескольких тем.
-- [ ] Проверить сохранение результатов в PostgreSQL.
-- [ ] Сравнить baseline vs improved в `docs/TESTING.md`.
+- Добавить новую тему через `/new_topic` (администратор) или файл `topics/<id>.json` + рестарт.
+- Активировать тему: `/set_topic <id>` (на работающей системе) или `ACTIVE_TOPIC` в `.env` (при первом старте).
+- Подробно — [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md).
 
-### Этап 6. Публикация
+### 5.5. Этап 5 · Подготовка документации
 
-- [ ] Пройти Deployment Validation на чистом окружении / VPS.
-- [ ] Опубликовать/обновить публичный GitHub-репозиторий.
-- [ ] Убедиться, что `.env` и внутренние материалы не попали в публичный репозиторий.
+- `README.md`, `ARCHITECTURE.md`, `PROMPT_ARCHITECTURE.md`, `API_CONTRACT.md`.
+- `DEPLOYMENT_GUIDE.md`, `USER_GUIDE.md`, `OPERATOR_GUIDE.md`, `SECURITY_NOTES.md`.
+- `E2E_SCENARIOS.md`, `SYSTEM_DEMO.md`, `BUSINESS_VALUE.md`, `TESTING.md`.
+- `examples/` — JSON-контракты LLM-хода по фазам.
 
-## 7. Критерии готовности
+---
+
+## ✅ 6. Критерии готовности
+
+### Функциональные
 
 - [x] Проект запускается через `docker compose up --build` без ошибок.
-- [x] Бот проходит полный сценарий baseline: `/start` → имя → обучение → тест → результат в БД.
-- [x] Улучшенная версия запускается через `docker compose up --build`.
-- [ ] Улучшенная версия проходит полный сценарий без дублирования вопросов и с чётким переходом к testing.
-- [ ] Документация APL самодостаточна и не ссылается на внутренние материалы лаборатории.
-- [ ] (Опционально) Пройдена Deployment Validation на VPS.
+- [x] Бот проходит сценарий `/start` → имя → обучение → тест → результат в PostgreSQL.
+- [x] Подсчёт `correct_answers` корректен (подтверждено прогонами 5/5, 4/5, 2/5, 1/5).
+- [x] `total_tokens_spent` сохраняется в PostgreSQL (F8 устранён).
+- [x] Нет дублирования вопросов — лексическая + embedding-дедупликация, порог 0.72 (D1/F2/F11 устранены).
+- [x] Чёткий переход к `testing` по сигналу готовности (F5/F9 устранены).
+- [x] Корректное завершение после `total_questions` — без лишнего N+1 вопроса (F3/F10 устранены).
+- [x] Имя сотрудника с ключевыми словами не запускает тест сразу (F7 устранён).
+- [x] Feedback по ответу не пропадает при guard-fallback.
 
-## 8. Открытые вопросы
+### Архитектурные
 
-- Подтвердить желаемое имя публичного GitHub-репозитория.
-- Решить, нужен ли fallback при недоступности OpenAI API в рамках MVP.
+- [x] Единая точка входа `main.py` (F4 устранён — `bot/main.py` не нужен).
+- [x] Промпты вынесены из хардкода: `prompts/v1/system.md` + `response-schema.json` + `prompt_loader.py`.
+- [x] Двухслойный промпт: пользовательский слой (`system.md`, без имён JSON-полей) + технический слой (`_build_prompt()` в коде).
+- [x] Универсальные темы: `topics/<id>.json` + `training_topics` в БД + админка с RBAC.
+- [x] Guard-логика фаз в `TrainingService.apply_ai_turn` (no regression, hard cap, пересчёт счётчика).
+- [x] Guard-fallback: `request_question()` / `generate_summary()` / `ensure_summary()`.
+- [x] Публичный GitHub-репозиторий с самодостаточной документацией.
+
+### Не закрыто
+
+- [ ] Retry/fallback при недоступности OpenAI API (сейчас HTTP-ошибки прерывают ход диалога).
+- [ ] Персистентное FSM-хранилище (Redis/PostgreSQL) — сессии в памяти.
+- [ ] `/topic <id>` закрыт RBAC (сейчас любой пользователь меняет глобальную тему).
+- [ ] Deployment Validation в чистом окружении — критерий готовности к публикации по стандарту APL.
+
+Подробнее о статусах дефектов — в [`docs/TESTING.md`](TESTING.md) (сводная таблица).
+
+---
+
+## 📚 Связанные документы
+
+- [🏠 `README.md`](../README.md) — главная страница проекта.
+- [🏗️ `docs/ARCHITECTURE.md`](ARCHITECTURE.md) — архитектура системы.
+- [📝 `docs/PROMPT_ARCHITECTURE.md`](PROMPT_ARCHITECTURE.md) — двухслойная архитектура промпта.
+- [🔌 `docs/API_CONTRACT.md`](API_CONTRACT.md) — контракты интеграций.
+- [🚀 `docs/DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) — развёртывание с нуля.
+- [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — управление темами.
+- [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов и дефекты.
+- [📊 `docs/PROJECT_STATE.md`](PROJECT_STATE.md) — паспорт состояния проекта.
