@@ -1,0 +1,26 @@
+{
+  "name": "training_turn",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "reply": {"type": "string"},
+      "phase": {"type": "string", "enum": ["learning", "testing", "completed"]},
+      "latest_answer_evaluated": {"type": "boolean"},
+      "answer_is_correct": {"type": ["boolean", "null"]},
+      "answer_feedback": {"type": ["string", "null"]},
+      "next_question": {"type": ["string", "null"]},
+      "final_summary": {"type": ["string", "null"]}
+    },
+    "required": [
+      "reply",
+      "phase",
+      "latest_answer_evaluated",
+      "answer_is_correct",
+      "answer_feedback",
+      "next_question",
+      "final_summary"
+    ],
+    "additionalProperties": false
+  }
+}

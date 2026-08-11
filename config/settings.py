@@ -11,17 +11,13 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
-    training_topic: str = Field(default="Корпоративный онбординг", alias="TRAINING_TOPIC")
-    training_material: str = Field(
-        default=(
-            "Компания использует асинхронную коммуникацию по умолчанию. "
-            "Все задачи ведутся через трекер, важные решения фиксируются письменно, "
-            "а эскалации блокеров ожидаются в течение 30 минут. "
-            "Перед релизом нужны code review, зеленые тесты и короткая запись в changelog."
-        ),
-        alias="TRAINING_MATERIAL",
-    )
-    training_material_file: str | None = Field(default=None, alias="TRAINING_MATERIAL_FILE")
+
+    prompts_dir: Path = Field(default=Path("prompts"), alias="PROMPTS_DIR")
+
+    admin_user_id: int | None = Field(default=None, alias="ADMIN_USER_ID")
+
+    active_topic_id: str | None = Field(default=None, alias="ACTIVE_TOPIC")
+
     quiz_question_count: int = Field(default=5, alias="QUIZ_QUESTION_COUNT", ge=1, le=20)
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
@@ -31,11 +27,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
-
-    def get_training_material(self) -> str:
-        if self.training_material_file:
-            return Path(self.training_material_file).read_text(encoding="utf-8").strip()
-        return self.training_material.strip()
 
 
 @lru_cache(maxsize=1)
