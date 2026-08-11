@@ -31,7 +31,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 
 ### ✅ Завершённые задачи
 
-- [x] Универсальная архитектура тем: `training_topics` в БД + `topics/*.json` + админка с RBAC (`/new_topic`, `/list_topics`, `/set_topic`, `/delete_topic`).
+- [x] Универсальная архитектура тем: единственный runtime-источник — `training_topics` в БД; `topics/*.json` — импортные шаблоны, загружаемые командой `/import_topic`; админка с RBAC (`/new_topic`, `/import_topic`, `/list_topics`, `/set_topic`, `/delete_topic`). Бот стартует при пустой БД, `/start` без темы не падает.
 - [x] Двухслойный промпт: `prompts/v1/system.md` (пользовательский слой) + технический слой в коде + `response-schema.json`.
 - [x] Guard-логика фаз в `TrainingService.apply_ai_turn` (запрет регресса, hard cap, пересчёт счётчика).
 - [x] Дедупликация вопросов: лексическая + embedding (косинус ≥ 0.72, `text-embedding-3-small`).
@@ -49,7 +49,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 - [ ] **Retry/fallback при недоступности OpenAI API** — сейчас HTTP 429/5xx прерывают ход диалога; guard-fallback решает другую задачу (некорректные ответы модели, а не сбои API).
 - [ ] **Персистентное FSM-хранилище** — сессии в `MemoryStorage`, прогресс активной сессии теряется при рестарте; для продакшена — Redis/PostgreSQL.
 - [ ] **RBAC на `/topic <id>`** — сейчас любой пользователь меняет глобальную активную тему для всех; см. `docs/SECURITY_NOTES.md`.
-- [ ] **Команда правки темы** — нет `/edit_topic`, `/new_topic` не запрашивает `prompts_version` (захардкожен `v1`); смена версии промпта у существующей темы — только через `/delete_topic` + правку `topics/<id>.json` + рестарт, либо прямой SQL.
+- [ ] **Команда правки темы (`/edit_topic`)** — сменить `prompts_version` у существующей темы можно через `/import_topic <id>` (перезапись из `topics/<id>.json`) или прямой SQL; однако отредактировать название/материал темы, созданной через `/new_topic` (без файла-заготовки), можно только прямым SQL. `/new_topic` по-прежнему не запрашивает `prompts_version` (захардкожен `v1`).
 
 ### 🟢 Низкий приоритет
 
@@ -112,7 +112,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 | Retry/fallback при сбое OpenAI API | Устойчивость | ⏳ Запланировано |
 | Персистентное FSM-хранилище | Архитектура | ⏳ Запланировано (Redis/PostgreSQL) |
 | RBAC на `/topic <id>` | Безопасность | ⏳ Запланировано |
-| Команда правки темы (`/edit_topic`, шаг `prompts_version` в `/new_topic`) | Управление темами | ⏳ Запланировано |
+| Команда правки темы (`/edit_topic` для тем без файла-заготовки) | Управление темами | ⏳ Смена `prompts_version` закрыта через `/import_topic` |
 
 ---
 
@@ -123,7 +123,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 **Утверждённые решения:**
 
 - MVP реализован на Python 3.11 + aiogram 3.x + OpenAI API.
-- Универсальные темы: `topics/<id>.json` + `training_topics` в БД + админка с RBAC; активная тема — в `bot_settings`, а не в `.env`.
+- Универсальные темы: единственный runtime-источник — `training_topics` в БД; `topics/<id>.json` — импортные шаблоны, загружаемые `/import_topic` (перестали быть вторым SOT и автосидированием); активная тема — в `bot_settings`, а не в `.env`.
 - Промпты вынесены из хардкода в `prompts/v1/` и разделены на два слоя: пользовательский (`system.md`) и технический (в коде).
 - Guard-логика фаз в сервисном слое: LLM отвечает за язык, код — за жизненный цикл.
 - Дедупликация вопросов двух уровней: лексическая + embedding (0.72).
@@ -160,7 +160,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 | Telegram Bot API | Получение и отправка сообщений (long polling) | Блокирует приём и отправку |
 | OpenAI API — Chat Completions | Генерация хода диалога, оценка, переходы фаз | Блокирует диалог (нет retry) |
 | OpenAI API — Embeddings | Дедупликация вопросов по смыслу | Дубликаты без fallback на лексическую дедупликацию |
-| PostgreSQL | Результаты, темы, настройки | Блокирует сохранение и запуск (нет тем — `RuntimeError`) |
+| PostgreSQL | Результаты, темы, настройки | Блокирует сохранение результатов; бот стартует и при пустой БД (тем нет — `/start` подскажет `/import_topic`/`/new_topic`) |
 | VPS / Docker Host | Для публичного развёртывания | Блокирует публичный деплой |
 
 ---
@@ -175,6 +175,7 @@ Telegram-бот для поэтапного обучения сотрудник�
 | 2026-08-11 | Документация APL | Подготовлен полный комплект публичной документации: ARCHITECTURE, PROMPT_ARCHITECTURE, API_CONTRACT, DEPLOYMENT_GUIDE, USER_GUIDE, OPERATOR_GUIDE, SECURITY_NOTES, TESTING, E2E_SCENARIOS, SYSTEM_DEMO, BUSINESS_VALUE, IMPLEMENTATION_PLAN |
 | 2026-08-11 | Публикация GitHub | Проект опубликован в `AlexLvGulyaev/telegram-onboarding-bot` |
 | 2026-08-11 | Полировка документации | README, ARCHITECTURE, BUSINESS_VALUE, DEPLOYMENT_GUIDE, IMPLEMENTATION_PLAN, OPERATOR_GUIDE приведены к эталону; скриншоты добавлены в OPERATOR_GUIDE |
+| 2026-08-11 | Один SOT для тем | Убрано автосидирование `topics/*.json` и `RuntimeError`-guard в `main.py`; БД — единственный источник тем; добавлена команда `/import_topic` (перезапись, закрывает смену `prompts_version`); `/start` без темы graceful; `/delete_topic` сообщает о сохранённых результатах |
 
 ---
 

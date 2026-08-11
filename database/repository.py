@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models import BotSettings, TrainingResult, TrainingTopic
@@ -20,6 +20,19 @@ class TrainingResultRepository:
         statement = select(TrainingResult).where(TrainingResult.id == result_id)
         result = await self._session.execute(statement)
         return result.scalar_one_or_none()
+
+    async def count_by_topic_name(self, name: str) -> int:
+        """Count results stored under a topic name.
+
+        `training_results.topic` is a free-form string (no foreign key), so a
+        topic can be deleted while its results remain as immutable history.
+        Used by /delete_topic to report how many results are preserved.
+        """
+        statement = select(func.count()).select_from(TrainingResult).where(
+            TrainingResult.topic == name
+        )
+        result = await self._session.execute(statement)
+        return result.scalar_one()
 
 
 class BotSettingsRepository:

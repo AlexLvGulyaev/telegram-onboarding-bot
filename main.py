@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import logging.config
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -17,7 +16,6 @@ from database import (
     create_session_factory,
     init_db,
 )
-from schemas import TrainingTopicConfig
 from services import AITrainingService, TrainingService
 
 logger = logging.getLogger(__name__)
@@ -65,37 +63,30 @@ async def run_bot() -> None:
 
     await init_db(engine)
 
+    # The database is the single source of truth for training topics. Starter
+    # topics from topics/*.json are loaded on explicit operator action via the
+    # /import_topic admin command, not automatically at startup. The bot starts
+    # regardless of whether any topics exist yet; /start then guides the
+    # operator to /import_topic or /new_topic.
     async with session_factory() as session:
         topic_repository = TrainingTopicRepository(session)
         existing_ids = {topic.id for topic in await topic_repository.list_all()}
-        # Seed database with built-in topics from disk. Idempotent: skips existing topics.
-        topic_files = sorted(Path("topics").glob("*.json"))
-        if not topic_files:
-            raise RuntimeError(
-                "No topic files found in topics/ and no topics in database. "
-                "Create at least one topic file or use /new_topic after first start."
-            )
-        for topic_path in topic_files:
-            try:
-                topic = TrainingTopicConfig.model_validate_json(
-                    topic_path.read_text(encoding="utf-8")
-                )
-                if topic.id not in existing_ids:
-                    await topic_repository.create_or_update(topic)
-            except Exception:
-                logger.exception("Failed to seed topic from %s", topic_path)
 
         settings_repository = BotSettingsRepository(session)
-        active_topic_id = await settings_repository.get_active_topic_id()
-        if active_topic_id:
-            topic = await topic_repository.get_by_id(active_topic_id)
-            if topic is None:
-                logger.warning(
-                    "Active topic %r not found in database, resetting active topic", active_topic_id
-                )
+        db_active_topic_id = await settings_repository.get_active_topic_id()
+
+        # The active topic is resolved with DB precedence over the .env value:
+        # the .env ACTIVE_TOPIC is only a first-start hint. If the resolved id
+        # refers to a topic that no longer exists, reset it instead of crashing.
+        candidate_topic_id = db_active_topic_id or settings.active_topic_id
+        if candidate_topic_id and candidate_topic_id not in existing_ids:
+            logger.warning(
+                "Active topic %r not found in database, resetting active topic", candidate_topic_id
+            )
+            if db_active_topic_id:
                 await settings_repository.set_active_topic_id(None)
-            else:
-                settings.active_topic_id = active_topic_id
+            candidate_topic_id = None
+        settings.active_topic_id = candidate_topic_id
 
     dp.message.middleware(LoggingMiddleware())
     dp.include_router(admin_router)

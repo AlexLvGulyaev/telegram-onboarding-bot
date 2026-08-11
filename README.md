@@ -97,11 +97,18 @@ flowchart TD
 ```bash
 cp .env.example .env
 # заполните BOT_TOKEN, OPENAI_API_KEY, ADMIN_USER_ID
-# задайте ACTIVE_TOPIC (id темы из topics/, напр. onboarding) — начальная активная тема
+# ACTIVE_TOPIC можно задать сразу (id темы, напр. onboarding) — станет активной
+# при первом старте, после того как тема загружена в БД через /import_topic
 docker compose up --build
 ```
 
-Проверка: `docker compose logs bot | tail` → ожидаемая строка `Start polling for bot @<your_bot>`. Затем в Telegram `/start`. Если `ACTIVE_TOPIC` не задан, бот стартует, но `/start` ответит «No active topic configured» — задайте тему командой `/set_topic <id>` (см. [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md)).
+Проверка: `docker compose logs bot | tail` → ожидаемая строка `Start polling for bot @<your_bot>`. Затем в Telegram (от имени администратора):
+
+1. `/import_topic` — загрузить темы-заготовки из `topics/*.json` в БД.
+2. `/set_topic onboarding` — назначить активную тему.
+3. `/start` — начать обучение.
+
+Бот стартует и при пустой БД. Если `/start` отвечает «Тем обучения пока нет» — выполните `/import_topic` (или `/new_topic`); если «Нет активной темы обучения» — `/set_topic <id>`. Подробно — в [`docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
 
 Полная инструкция (включая VPS, проверку БД, troubleshooting) — в [`docs/DEPLOYMENT_GUIDE.md`](docs/DEPLOYMENT_GUIDE.md).
 
@@ -198,13 +205,15 @@ telegram-onboarding-bot/
 │   └── v1/
 │       ├── system.md                    # Пользовательский промпт (роль + поведение)
 │       └── response-schema.json          # JSON Schema ответа LLM
-└── topics/                              # Конфиги тем обучения (JSON)
+└── topics/                              # Темы-заготовки (импортные шаблоны, JSON)
     ├── onboarding.json
     └── customer-service.json
 ```
 
-> ℹ️ `__init__.py` опущены для краткости. Темы, созданные через `/new_topic`,
-> сохраняются в PostgreSQL (`training_topics`), а не в каталог `topics/` —
+> ℹ️ `__init__.py` опущены для краткости. Единственный runtime-источник тем —
+> PostgreSQL (`training_topics`). Файлы `topics/*.json` — это темы-заготовки,
+> загружаемые в БД командой `/import_topic` (не автоматически при старте). Темы,
+> созданные через `/new_topic`, живут только в БД —
 > см. [🎛️ `docs/OPERATOR_GUIDE.md`](docs/OPERATOR_GUIDE.md).
 
 ---

@@ -47,7 +47,14 @@ def _format_bot_reply(draft: TrainingSessionDraft, reply: str) -> str:
 async def _resolve_topic_config(
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
-) -> TrainingTopicConfig:
+) -> TrainingTopicConfig | None:
+    """Resolve the active topic into a config, or return None if none is set.
+
+    The database is the single source of truth for topics. When no active topic
+    is configured (or the configured one was deleted), this returns None instead
+    of raising — callers surface a friendly message and never enter the training
+    flow without a topic.
+    """
     if settings.active_topic_id:
         async with session_factory() as session:
             repository = TrainingTopicRepository(session)
@@ -60,17 +67,25 @@ async def _resolve_topic_config(
                     material=topic.material,
                     prompts_version=topic.prompts_version,
                 )
-    raise RuntimeError("No active topic configured. Use /set_topic <id> as admin.")
+    return None
 
 
 async def _ensure_topic_config(
     ai_training_service: AITrainingService,
     settings: Settings,
     session_factory: async_sessionmaker[AsyncSession],
-) -> TrainingTopicConfig:
+) -> TrainingTopicConfig | None:
     topic_config = await _resolve_topic_config(settings, session_factory)
-    ai_training_service.set_topic_config(topic_config)
+    if topic_config is not None:
+        ai_training_service.set_topic_config(topic_config)
     return topic_config
+
+
+async def _has_any_topics(session_factory: async_sessionmaker[AsyncSession]) -> bool:
+    async with session_factory() as session:
+        repository = TrainingTopicRepository(session)
+        topics = await repository.list_all()
+    return bool(topics)
 
 
 async def _send_final_result(
@@ -85,6 +100,16 @@ async def _send_final_result(
 ) -> None:
     """Finalize the draft, save result to PostgreSQL and send the final message."""
     topic_config = await _ensure_topic_config(ai_training_service, settings, session_factory)
+    # The topic could have been deleted mid-session. Results are immutable history
+    # keyed by topic name, so fall back to the name captured at /start time and
+    # still save the result. ensure_summary uses the topic config cached on the
+    # AI service from /start, so summary generation is unaffected.
+    state_data = await state.get_data()
+    topic_name = (
+        topic_config.name
+        if topic_config is not None
+        else state_data.get("topic_name", "—")
+    )
     finalized_draft = await training_service.ensure_summary(
         ai_training_service=ai_training_service,
         draft=draft,
@@ -94,7 +119,7 @@ async def _send_final_result(
         await training_service.create_result(
             repository=repository,
             draft=finalized_draft,
-            topic=topic_config.name,
+            topic=topic_name,
             telegram_user_id=message.from_user.id if message.from_user else 0,
             telegram_chat_id=message.chat.id,
         )
@@ -122,10 +147,31 @@ async def handle_start(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     await state.clear()
-    await state.set_state(TrainingStates.active)
+    # Resolve the topic BEFORE entering the training state. If there is no
+    # usable topic, surface a friendly message and stay out of the FSM — never
+    # crash and never start a session without material to teach.
     topic_config = await _ensure_topic_config(ai_training_service, settings, session_factory)
+    if topic_config is None:
+        has_topics = await _has_any_topics(session_factory)
+        if has_topics:
+            await message.answer(
+                "Нет активной темы обучения.\n\n"
+                "Администратор: /set_topic <id> — выбрать активную тему.",
+                reply_markup=remove_keyboard(),
+            )
+        else:
+            await message.answer(
+                "Тем обучения пока нет.\n\n"
+                "Администратор: /import_topic (загрузить из topics/*.json) "
+                "или /new_topic (создать вручную).",
+                reply_markup=remove_keyboard(),
+            )
+        return
+
+    await state.set_state(TrainingStates.active)
     await state.update_data(
         draft=training_service.start_session(settings.quiz_question_count).model_dump(),
+        topic_name=topic_config.name,
         result_id=None,
         name_collected=False,
     )

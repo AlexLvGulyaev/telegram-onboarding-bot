@@ -102,9 +102,9 @@ topics/"]
 
 | Компонент | Файл | Назначение |
 |-----------|------|------------|
-| Точка входа | `main.py` | Логирование, инициализация БД, сидинг тем, запуск polling |
+| Точка входа | `main.py` | Логирование, инициализация БД, восстановление активной темы, запуск polling |
 | Обработчики | `bot/handlers/onboarding.py` | `/start`, `/topic`, `/cancel`, FSM-сессия, guard-fallback |
-| Админ-роутер | `bot/handlers/admin.py` | `/admin`, `/new_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC) |
+| Админ-роутер | `bot/handlers/admin.py` | `/admin`, `/new_topic`, `/import_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC) |
 | Клавиатуры | `bot/keyboards/common.py` | Reply-клавиатура «Отмена», удаление клавиатуры |
 | Middleware | `bot/middlewares/logging.py` | Логирование входящих сообщений |
 | Конфигурация | `config/settings.py` | Pydantic-settings из `.env` |
@@ -123,8 +123,8 @@ topics/"]
 ### 5.1. Старт сессии
 
 - Сотрудник отправляет `/start`.
-- `handle_start` сбрасывает FSM, устанавливает `TrainingStates.active`, через `_ensure_topic_config` загружает активную тему из PostgreSQL.
-- `TrainingService.start_session` создаёт пустой `TrainingSessionDraft` (`phase=collecting_name`) и сохраняет его в FSM-данных.
+- `handle_start` через `_ensure_topic_config` загружает активную тему из PostgreSQL **до** входа в FSM-состояние. Если активной темы нет — бот отвечает подсказкой (`/import_topic`/`/new_topic` или `/set_topic <id>`) и не начинает сессию.
+- При наличии темы устанавливается `TrainingStates.active`, `TrainingService.start_session` создаёт пустой `TrainingSessionDraft` (`phase=collecting_name`) и сохраняет его в FSM-данных.
 - Бот отвечает приветствием и просит имя сотрудника.
 
 ### 5.2. Ход диалога
@@ -312,9 +312,19 @@ flowchart LR
 - **Итоговая сводка** — `ensure_summary` делает дополнительный ход `generate_summary`, если модель не вернула `final_summary` при завершении.
 - **Извлечение вопроса из `reply`** — если `next_question` пустой/некорректный, вопрос пытаемся извлечь из `reply` по знаку вопроса.
 
-### 10.4. Сидинг тем при старте
+### 10.4. Единственный источник тем — БД
 
-При запуске `main.py` читает `topics/*.json` и сохраняет отсутствующие в `training_topics` (идемпотентно — существующие не перезаписываются). Если файлов тем нет и БД пуста — `RuntimeError`, бот не стартует.
+Единственный runtime-источник тем — PostgreSQL (`training_topics`). Каталог `topics/*.json` — это **импортные шаблоны**, загружаемые в БД командой администратора `/import_topic` (через `create_or_update`, с перезаписью всех полей включая `prompts_version`). Бот не читает `topics/` автоматически при старте.
+
+При запуске `main.py` не выполняет сидинга. Бот стартует при любой состоянии БД (включая пустую) и без каталога `topics/`. Алгоритм старта:
+
+- загрузить список id тем из `training_topics`;
+- определить активную тему: значение из `bot_settings` имеет приоритет над `.env ACTIVE_TOPIC` (последний — только first-start hint);
+- если выбранная тема не найдена в БД — сбросить её (`bot_settings.active_topic_id = None` для DB-значения, `settings.active_topic_id = None` для `.env`) с предупреждением в лог, не падать.
+
+`/start` без активной темы не падает: если в БД нет тем — подсказка `/import_topic` или `/new_topic`; если темы есть, но активная не выбрана — подсказка `/set_topic <id>`. FSM-состояние `active` не устанавливается, пока тема не подтверждена.
+
+Результаты обучения (`training_results.topic` — свободная строка без FK) не удаляются при удалении темы; `/delete_topic` сообщает число сохранённых результатов.
 
 ---
 

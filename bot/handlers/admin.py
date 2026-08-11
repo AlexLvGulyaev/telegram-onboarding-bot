@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -8,7 +9,11 @@ from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from config import Settings
-from database import BotSettingsRepository, TrainingTopicRepository
+from database import (
+    BotSettingsRepository,
+    TrainingResultRepository,
+    TrainingTopicRepository,
+)
 from schemas import TrainingTopicConfig
 
 logger = logging.getLogger(__name__)
@@ -38,6 +43,7 @@ async def handle_admin(message: Message, settings: Settings) -> None:
         "👨‍💼 Панель администратора\n\n"
         "Доступные команды:\n"
         "/new_topic — создать новую тему обучения\n"
+        "/import_topic [id] — загрузить темы из topics/*.json в базу (перезапись)\n"
         "/list_topics — список тем\n"
         "/delete_topic <id> — удалить тему\n"
         "/set_topic <id> — сделать тему активной по умолчанию"
@@ -138,6 +144,59 @@ async def handle_topic_material(
     )
 
 
+@router.message(Command("import_topic"))
+async def handle_import_topic(
+    message: Message,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    if not _is_admin(message, settings):
+        await message.answer("Эта команда доступна только администратору.")
+        return
+
+    args = message.text.split(maxsplit=1) if message.text else []
+    requested_id = args[1].strip().lstrip("/") if len(args) > 1 else None
+
+    topics_dir = Path("topics")
+    if requested_id:
+        files = [topics_dir / f"{requested_id}.json"]
+    else:
+        files = sorted(topics_dir.glob("*.json"))
+
+    imported: list[str] = []
+    async with session_factory() as session:
+        repository = TrainingTopicRepository(session)
+        for path in files:
+            if not path.exists():
+                await message.answer(f"Файл темы не найден: {path}")
+                return
+            try:
+                topic = TrainingTopicConfig.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+                # create_or_update overwrites all fields, including prompts_version,
+                # so /import_topic is also the way to move an existing topic to a
+                # new prompt version: edit topics/<id>.json, then /import_topic <id>.
+                await repository.create_or_update(topic)
+                imported.append(topic.id)
+            except Exception as exc:
+                logger.exception("Failed to import topic from %s", path)
+                await message.answer(f"Не удалось импортировать тему из {path.name}: {exc}")
+                return
+
+    if not imported:
+        await message.answer(
+            "Файлы тем не найдены в каталоге topics/. "
+            "Создайте topics/<id>.json или используйте /new_topic."
+        )
+        return
+
+    await message.answer(
+        f"✅ Импортировано/обновлено тем: {len(imported)} ({', '.join(imported)}).\n\n"
+        "Для активации отправьте /set_topic <id>"
+    )
+
+
 @router.message(Command("list_topics"))
 async def handle_list_topics(
     message: Message,
@@ -194,6 +253,12 @@ async def handle_delete_topic(
             await message.answer(f"Тема '{topic_id}' не найдена.")
             return
 
+        # Results are immutable history (training_results.topic is a free-form
+        # string with no foreign key), so deleting a topic never touches them.
+        # Report how many are preserved so the operator knows they still exist.
+        result_repository = TrainingResultRepository(session)
+        results_count = await result_repository.count_by_topic_name(topic.name)
+
         try:
             await repository.delete(topic_id)
         except Exception as exc:
@@ -206,7 +271,12 @@ async def handle_delete_topic(
             await settings_repository.set_active_topic_id(None)
             settings.active_topic_id = None
 
-    await message.answer(f"Тема '{topic_id}' удалена.")
+    deletion_message = f"Тема '{topic_id}' удалена."
+    if results_count:
+        deletion_message += (
+            f"\n\nРезультаты обучения ({results_count}) сохранены как историческая запись."
+        )
+    await message.answer(deletion_message)
 
 
 @router.message(Command("set_topic"))

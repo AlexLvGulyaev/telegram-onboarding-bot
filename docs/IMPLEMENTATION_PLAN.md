@@ -27,9 +27,9 @@ flowchart TD
 
 | Компонент | Файл | Назначение |
 |-----------|------|------------|
-| Точка входа | `main.py` | Запуск бота, инициализация БД, сидинг тем из `topics/`, восстановление активной темы |
+| Точка входа | `main.py` | Запуск бота, инициализация БД, восстановление активной темы, запуск polling |
 | Обработчики | `bot/handlers/onboarding.py` | `/start`, `/topic`, `/cancel`, FSM-сессия, guard-fallback, semantic-dedup |
-| Админ-роутер | `bot/handlers/admin.py` | `/new_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC по `ADMIN_USER_ID`) |
+| Админ-роутер | `bot/handlers/admin.py` | `/new_topic`, `/import_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC по `ADMIN_USER_ID`) |
 | Клавиатуры | `bot/keyboards/common.py` | Reply-клавиатура «Отмена», удаление клавиатуры |
 | Middleware | `bot/middlewares/logging.py` | Логирование входящих сообщений |
 | Конфигурация | `config/settings.py` | Pydantic-settings из `.env` |
@@ -117,12 +117,13 @@ flowchart TD
 - Получить `BOT_TOKEN` через [@BotFather](https://t.me/botfather).
 - Подготовить `OPENAI_API_KEY` и модель в аккаунте.
 - Указать `ADMIN_USER_ID` (Telegram user ID администратора).
-- Задать `ACTIVE_TOPIC` (id темы-заготовки из `topics/`) — начальная активная тема.
+- `ACTIVE_TOPIC` (опционально) — id темы, которая станет активной при первом старте. Тема должна быть загружена в БД через `/import_topic` (из `topics/*.json`) или `/new_topic` после первого запуска.
 
 ### 5.2. Этап 2 · Локальная проверка
 
 - `docker compose up --build`.
 - Проверить логи: `Start polling for bot @<your_bot>`.
+- `/import_topic` (администратор) — загрузить темы-заготовки в БД; `/set_topic onboarding`.
 - Пройти сценарий `/start` → имя → обучение → тест → итог в PostgreSQL.
 - Проверить сохранение: `SELECT count(*) FROM training_results;`.
 
@@ -135,8 +136,8 @@ flowchart TD
 
 ### 5.4. Этап 4 · Управление темами
 
-- Добавить новую тему через `/new_topic` (администратор) или файл `topics/<id>.json` + рестарт.
-- Активировать тему: `/set_topic <id>` (на работающей системе) или `ACTIVE_TOPIC` в `.env` (при первом старте).
+- Добавить новую тему через `/new_topic` (администратор) или файл `topics/<id>.json` + `/import_topic <id>` (загрузка в БД с перезаписью).
+- Активировать тему: `/set_topic <id>` (на работающей системе) или `ACTIVE_TOPIC` в `.env` (при первом старте, после загрузки темы в БД).
 - Подробно — [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md).
 
 ### 5.5. Этап 5 · Подготовка документации
@@ -177,7 +178,7 @@ flowchart TD
 - [ ] Retry/fallback при недоступности OpenAI API (сейчас HTTP-ошибки прерывают ход диалога).
 - [ ] Персистентное FSM-хранилище (Redis/PostgreSQL) — сессии в памяти.
 - [ ] `/topic <id>` закрыт RBAC (сейчас любой пользователь меняет глобальную тему).
-- [ ] Команда правки темы: нет `/edit_topic`, `/new_topic` не запрашивает `prompts_version` (захардкожен `v1`); смена версии промпта у существующей темы — только через `/delete_topic` + правку `topics/<id>.json` + рестарт, либо прямой SQL.
+- [ ] Команда правки темы (`/edit_topic`): сменить `prompts_version` у существующей темы можно через `/import_topic <id>` (перезапись из `topics/<id>.json`) или прямой SQL; отредактировать название/материал темы, созданной через `/new_topic` без файла-заготовки, можно только прямым SQL. `/new_topic` по-прежнему не запрашивает `prompts_version` (захардкожен `v1`).
 - [ ] Deployment Validation в чистом окружении — критерий готовности к публикации по стандарту APL.
 
 Подробнее о статусах дефектов — в [`docs/TESTING.md`](TESTING.md) (сводная таблица).

@@ -105,7 +105,7 @@ prompts/
 }
 ```
 
-Одну и ту же версию промптов можно использовать с разными темами — `prompts_version` указывает, какой каталог `prompts/` грузить. Хранилище тем — PostgreSQL (`training_topics`); файлы `topics/*.json` — заготовки, сидируемые в БД при старте. Добавление и активация тем — в [🎛️ `OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md).
+Одну и ту же версию промптов можно использовать с разными темами — `prompts_version` указывает, какой каталог `prompts/` грузить. Хранилище тем — PostgreSQL (`training_topics`); файлы `topics/*.json` — импортные шаблоны, загружаемые в БД командой `/import_topic` (не автоматически при старте). Добавление и активация тем — в [🎛️ `OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md).
 
 ---
 
@@ -220,19 +220,18 @@ LLM не всегда строго следует инструкциям, поэ
 
 ### Как сменить `prompts_version` у темы
 
-Темы хранятся в PostgreSQL (`training_topics`); `prompts_version` — колонка. **В боте нет команды правки существующей темы** (`/new_topic` не запрашивает версию и захардкожен в `"v1"`, а правка `topics/<id>.json` + рестарт не обновляет существующую тему — сидирование идемпотентно и пропускает имеющиеся id). Доступные способы:
+Темы хранятся в PostgreSQL (`training_topics`); `prompts_version` — колонка. Сменить версию у существующей темы можно двумя способами:
 
-- **Удалить и пересидировать** (рекомендуется для тем-заготовок):
-  1. `/delete_topic <id>` — удаляет тему из БД.
-  2. В `topics/<id>.json` поставить `"prompts_version": "v2"`.
-  3. `docker compose restart bot` — сидирование создаст тему заново с `v2`.
+- **Через `/import_topic`** (рекомендуется для тем-заготовок):
+  1. В `topics/<id>.json` поставьте `"prompts_version": "v2"`.
+  2. Отправьте `/import_topic <id>` администратором — `create_or_update` перезапишет тему в БД, включая `prompts_version`.
 - **Прямой SQL** (для тем, созданных через `/new_topic`, без файла-заготовки):
   ```bash
   docker compose exec db psql -U postgres -d onboarding -c \
     "UPDATE training_topics SET prompts_version='v2' WHERE id='<id>';"
   ```
 
-> ⚠️ Это известное ограничение MVP: нет команды `/edit_topic` и шага `prompts_version` в `/new_topic`. См. [📋 `docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md), «Не закрыто».
+> ℹ️ `/new_topic` создаёт тему с `prompts_version="v1"` и не запрашивает версию в диалоге. Для перевода такой темы на `v2` используйте прямой SQL либо сначала создайте файл `topics/<id>.json` с нужной версией и выполните `/import_topic <id>`.
 
 ---
 
