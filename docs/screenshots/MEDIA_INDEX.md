@@ -65,7 +65,7 @@ GitHub. Внутренние свидетельства тестирования
 
 | ID | Файл | Категория | Тезис | Используется в |
 |----|------|-----------|-------|----------------|
-| 1 | `TOB_ui_happy_path.png` | `ui` | Полный сквозной диалог: `/start` → имя → блок обучения → «Готов» → переход к тесту → вопросы + feedback → итог X/5 + `final_summary` | `README.md`, `SYSTEM_DEMO.md`, `E2E_SCENARIOS.md`, `BUSINESS_VALUE.md` |
+| 1 | `TOB_ui_happy_path.png` | `ui` | Полный сквозной диалог: `/start` → имя → блок обучения → «Готов» → переход к тесту → вопросы + feedback → итог X/5 + `final_summary` | `README.md`, `SYSTEM_DEMO.md`, `E2E_SCENARIOS.md`, `BUSINESS_VALUE.md`, `USER_GUIDE.md` |
 | 2 | `TOB_result_db_rows.png` | `result` | Результат теста сохраняется в PostgreSQL: таблица `training_results` (колонки `employee_name`, `topic`, `total_questions`, `correct_answers`, `score_percent`, `created_at`) | `SYSTEM_DEMO.md`, `TESTING.md`, `ARCHITECTURE.md`, `OPERATOR_GUIDE.md` |
 | 3 | `TOB_ui_cancel.png` | `ui` | `/cancel` прерывает сессию: подтверждение сброса + повторное сообщение без `/start` не возобновляет старую сессию | `README.md`, `SYSTEM_DEMO.md`, `E2E_SCENARIOS.md`, `USER_GUIDE.md` |
 | 4 | `TOB_ui_topic_switch.png` | `ui` | Смена темы пользователем: `/topic` (список доступных тем) → `/topic <id>` (подтверждение переключения) → `/start` уже по новой теме | `README.md`, `SYSTEM_DEMO.md`, `E2E_SCENARIOS.md`, `USER_GUIDE.md`, `OPERATOR_GUIDE.md` |
