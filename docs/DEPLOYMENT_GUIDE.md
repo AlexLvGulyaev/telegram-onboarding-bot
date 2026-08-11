@@ -4,29 +4,54 @@
 **Дата:** 2026-08-11
 **Статус:** Source of Truth процесса развёртывания.
 
-> 📌 **SOT:** Этот документ — единственный источник истины для воспроизведения
-> проекта. Любое изменение, затрагивающее развёртывание, требует актуализации
-> здесь. Готовность к публикации подтверждается прохождением Deployment
-> Validation в чистом окружении — см. `DEPLOYMENT_VALIDATION_REPORT.md`.
+---
+
+## 🎯 1. Назначение
+
+Единый Source of Truth для воспроизведения работоспособного экземпляра Telegram Onboarding Bot в чистом окружении. Если после выполнения руководства система не работает — руководство устарело.
+
+Руководство рассчитано на технически подготовленного пользователя, знакомого с Docker и Linux. Управление темами через бота (команды администратора) описано в [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) и здесь не повторяется.
+
+> ⚠️ Все токены, ключи и ID в этом документе — плейсхолдеры. Никогда не используйте значения из примеров в production.
 
 ---
 
-## 🧰 1. Требования
+## 📚 2. Связанные документы
 
-- Установленный Docker.
-- Установленный Docker Compose (плагин `docker compose`, не `docker-compose` v1).
-- Telegram-бот и его токен (`BOT_TOKEN`).
+- [🏠 `README.md`](../README.md) — главная страница проекта и быстрый старт.
+- [🏗️ `docs/ARCHITECTURE.md`](ARCHITECTURE.md) — архитектура системы.
+- [📖 `docs/USER_GUIDE.md`](USER_GUIDE.md) — как пройти обучение сотруднику.
+- [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — как управлять темами оператору.
+- [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов.
+- [🔐 `docs/SECURITY_NOTES.md`](SECURITY_NOTES.md) — безопасность, RBAC, секреты.
+
+---
+
+## 🛠️ 3. Варианты развёртывания
+
+| Вариант | Когда использовать | Требования |
+|---------|--------------------|------------|
+| **Локальный запуск** | Разработка, ручное тестирование | Docker, Docker Compose v2 |
+| **Production на VPS** | Публичный бот для сотрудников | VPS, Docker, SSH |
+
+---
+
+## 📋 4. Требования
+
+- Установленный Docker и Docker Compose (плагин `docker compose`, не `docker-compose` v1).
+- Telegram-бот и его токен (`BOT_TOKEN`) — от [@BotFather](https://t.me/botfather).
 - Ключ OpenAI API (`OPENAI_API_KEY`).
+- Telegram user ID администратора (`ADMIN_USER_ID`) — для управления темами.
 
-## ▶️ 2. Локальный запуск
+---
 
-1. Скопируйте `.env.example` в `.env`:
+## 🔧 5. Переменные окружения
+
+Создайте `.env` из `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
-
-2. Заполните `.env`:
 
 ```env
 BOT_TOKEN=your_telegram_bot_token
@@ -35,46 +60,58 @@ OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.4-mini-2026-03-17
 OPENAI_BASE_URL=https://api.openai.com/v1
 
-# Admin access
 ADMIN_USER_ID=your_telegram_user_id
 
-# Выберите тему из topics/ или используйте legacy-переменные
 ACTIVE_TOPIC=onboarding
 PROMPTS_DIR=prompts
-TOPICS_DIR=topics
 
 QUIZ_QUESTION_COUNT=5
 LOG_LEVEL=INFO
 ```
 
-> ⚠️ **Внимание:** `.env` содержит секреты и **не коммитируется** в репозиторий
-> (уже в `.gitignore`). Не публикуйте `BOT_TOKEN` и `OPENAI_API_KEY`. В
-> документации используются placeholder-значения `your_...`.
+### Как получить переменные
 
-3. Запустите проект:
+- `BOT_TOKEN` — от [@BotFather](https://t.me/botfather).
+- `DATABASE_URL` — для docker compose используется сервис `db` (оставьте как в примере). При внешней БД укажите её URL.
+- `OPENAI_API_KEY` — из личного кабинета OpenAI.
+- `OPENAI_MODEL` — модель OpenAI. Убедитесь, что она доступна в вашем аккаунте.
+- `ADMIN_USER_ID` — ваш числовой Telegram user ID. Узнать: отправьте любое сообщение боту [@userinfobot](https://t.me/userinfobot) или выполните `curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getUpdates" | jq '.result[-1].message.from.id'`.
+- `ACTIVE_TOPIC` — id темы-заготовки из каталога `topics/` (сидируется в БД при старте). Применяется **только при первом старте**, пока в БД нет активной темы; на работающей системе активная тема меняется через `/set_topic` (см. [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)).
+- `PROMPTS_DIR` — каталог версионированных промптов (по умолчанию `prompts`).
+- `QUIZ_QUESTION_COUNT` — число вопросов теста (1–20, по умолчанию 5).
+- `LOG_LEVEL` — `DEBUG` / `INFO` / `WARNING` / `ERROR` (по умолчанию `INFO`).
+
+> ⚠️ `.env` содержит секреты и **не коммитируется** (уже в `.gitignore`). Не публикуйте `BOT_TOKEN` и `OPENAI_API_KEY`.
+
+---
+
+## ▶️ 6. Локальный запуск
 
 ```bash
+# клонировать репозиторий
+git clone <repo-url>
+cd telegram-onboarding-bot
+
+# подготовить .env
+cp .env.example .env
+# заполнить .env (см. раздел 5)
+
+# собрать и запустить
 docker compose up --build
 ```
 
-4. Убедитесь, что контейнеры подняты (smoke-test):
+Проверка:
 
 ```bash
-docker compose ps
+docker compose ps        # сервисы db и bot со статусом Up / healthy
+docker compose logs bot | tail   # ожидаемая строка: Start polling for bot @<your_bot>
 ```
 
-Ожидаемый результат: сервисы `db` и `bot` со статусом `Up` / `healthy`.
+Если вместо неё ошибка импорта или traceback — см. раздел «Устранение неполадок».
 
-5. Проверьте, что бот запустился:
+---
 
-```bash
-docker compose logs bot | tail
-```
-
-Ожидаемая строка: `Start polling for bot @<your_bot>`. Если вместо неё ошибка
-иморта или traceback — см. раздел «Типовые проблемы».
-
-## 🗄️ 3. Проверка базы данных
+## 🗄️ 7. Проверка базы данных
 
 ### Вариант 1: psql из контейнера
 
@@ -82,123 +119,196 @@ docker compose logs bot | tail
 docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training_results;"
 ```
 
-### Вариант 2: DBeaver
+### Вариант 2: DBeaver (через SSH-туннель или напрямую)
 
 - Host: `localhost`
-- Port: `5434` (или тот порт, что проброшен в `docker-compose.yml`, если `5432` занят)
+- Port: `5434` (проброшен в `docker-compose.yml` как `5434:5432`)
 - Database: `onboarding`
-- User: `postgres`
-- Password: `postgres`
+- User / Password: `postgres` / `postgres`
 
-## 🧪 4. Проверка бота
+---
 
-1. Откройте Telegram, найдите своего бота.
-2. Отправьте `/start`.
-3. Введите имя сотрудника.
-4. Пройдите обучение и тестирование.
-5. Убедитесь, что результат сохранился в PostgreSQL.
-6. Для смены темы отправьте `/topic` и выберите другую тему.
+## 🚀 8. Развёртывание на VPS
 
-## 🎛️ 5. Управление темами через Telegram-админку
-
-Администратор (пользователь с `ADMIN_USER_ID`) может управлять темами прямо в боте:
-
-| Команда | Назначение |
-|---------|------------|
-| `/admin` | Показать меню администратора |
-| `/new_topic` | Создать тему по шагам в диалоге |
-| `/list_topics` | Список тем с отметкой активной |
-| `/set_topic <id>` | Сделать тему активной по умолчанию |
-| `/delete_topic <id>` | Удалить тему |
-
-Добавленная через `/new_topic` тема сохраняется в PostgreSQL (`training_topics`)
-и сразу доступна для обучения после активации через `/set_topic <id>`.
-Каталог `topics/` содержит только темы-заготовки, поставляемые с репозиторием.
-
-## ✏️ 6. Добавление новой темы вручную
-
-1. Создайте файл `topics/<id>.json`:
-
-```json
-{
-  "id": "my-topic",
-  "name": "Моя тема",
-  "description": "Краткое описание",
-  "material": "Материал для обучения...",
-  "prompts_version": "v1"
-}
-```
-
-2. Установите `ACTIVE_TOPIC=my-topic` в `.env`.
-3. Пересоздайте контейнер бота:
+### 8.1. Подключиться к серверу
 
 ```bash
-docker compose up -d --force-recreate bot
+ssh root@YOUR_VPS_IP
 ```
 
-## 🛑 7. Остановка
-
-```bash
-docker compose down
-```
-
-Чтобы удалить данные PostgreSQL:
-
-```bash
-docker compose down -v
-```
-
-## 🖥️ 8. Перенос на VPS
-
-1. Подключитесь к серверу по SSH.
-2. Установите Docker и плагин Docker Compose (v2):
+### 8.2. Установить Docker и плагин Compose
 
 ```bash
 apt update
 apt install -y docker.io docker-compose-plugin
 ```
 
-3. Клонируйте репозиторий:
+### 8.3. Клонировать репозиторий
 
 ```bash
+cd /opt
 git clone <repo-url>
 cd telegram-onboarding-bot
 ```
 
-4. Создайте `.env` из `.env.example` и заполните секреты (см. выше).
-5. Запустите:
+### 8.4. Создать .env и заполнить секреты
+
+```bash
+cp .env.example .env
+nano .env
+# заполнить BOT_TOKEN, OPENAI_API_KEY, ADMIN_USER_ID
+# Ctrl+O, Enter, Ctrl+X
+```
+
+### 8.5. Собрать и запустить
 
 ```bash
 docker compose up --build -d
 ```
 
-## 🛠️ 9. Типовые проблемы
+### 8.6. Проверить статус
+
+```bash
+docker compose ps
+docker compose logs bot | tail
+```
+
+Ожидаемая строка в логах: `Start polling for bot @<your_bot>`.
+
+---
+
+## 🧪 9. Проверка запуска (smoke test)
+
+1. `docker compose ps` — `db` и `bot` со статусом `Up` / `healthy`.
+2. `docker compose logs bot | tail` — есть `Start polling for bot @…`.
+3. В Telegram `/start` — бот отвечает, называет тему, просит имя сотрудника.
+4. Пройдите обучение и тест до итогового балла.
+5. Проверьте сохранение в БД:
+   ```bash
+   docker compose exec db psql -U postgres -d onboarding -c "SELECT count(*) FROM training_results;"
+   ```
+   — счётчик увеличился.
+
+Полный воспроизводимый прогон в чистом окружении — см. [`docs/DEPLOYMENT_VALIDATION_REPORT.md`](DEPLOYMENT_VALIDATION_REPORT.md).
+
+---
+
+## 📂 10. Темы обучения (поставка и активация)
+
+Это раздел про развёртывание тем, а не управление ими через бота (управление — в [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)).
+
+**Хранилище тем — PostgreSQL** (`training_topics`). Каталог `topics/` содержит только темы-заготовки, поставляемые с репозиторием.
+
+**Сидинг при старте.** При запуске `main.py` читает `topics/*.json` и сохраняет отсутствующие темы в БД (`training_topics`) — идемпотентно: **существующие темы (по id) не перезаписываются**. Если файлов тем нет и БД пуста — `RuntimeError`, бот не стартует.
+
+**Добавить свою тему-заготовку** (для поставки с репозиторием):
+
+1. Создайте файл `topics/<id>.json`:
+
+   ```json
+   {
+     "id": "my-topic",
+     "name": "Моя тема",
+     "description": "Краткое описание (≥ 10 символов)",
+     "material": "Материал для обучения и теста...",
+     "prompts_version": "v1"
+   }
+   ```
+
+2. Перезапустите бот — тема засидируется в БД:
+
+   ```bash
+   docker compose restart bot
+   ```
+
+3. Активируйте тему:
+   - **при первом старте** — задайте `ACTIVE_TOPIC=my-topic` в `.env` (применяется, только пока в БД нет активной темы);
+   - **на работающей системе** — команда `/set_topic my-topic` администратором (см. [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)).
+
+> ℹ️ `.env ACTIVE_TOPIC` **не** меняет тему на работающей системе, где в БД уже есть активная тема (`bot_settings`): при рестарте `main.py` перезаписывает активную тему из БД. Для смены используйте `/set_topic`.
+
+> ℹ️ Чтобы обновить существующую тему через файл, сначала удалите её из БД (`/delete_topic <id>`, см. [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)) — иначе сидинг пропустит её.
+
+---
+
+## 🔄 11. Обновление
+
+```bash
+cd /opt/telegram-onboarding-bot
+git pull
+docker compose up -d --build
+```
+
+Данные PostgreSQL сохраняются в volume `postgres_data` и не теряются при пересборке.
+
+---
+
+## ↩️ 12. Откат
+
+Если обновление привело к неработоспособности:
+
+```bash
+git log --oneline -5
+git checkout <предыдущий_рабочий_коммит>
+docker compose up -d --build
+```
+
+---
+
+## 🛑 13. Остановка
+
+```bash
+docker compose down
+```
+
+Удалить данные PostgreSQL:
+
+```bash
+docker compose down -v
+```
+
+---
+
+## 🚨 14. Устранение неполадок
 
 | Симптом | Причина | Решение |
 |---------|---------|---------|
 | `bot` рестартует, в логах traceback / `ImportError` | Образ собран из старого кода | `docker compose build` (или `--build`), затем `docker compose up -d` |
-| Порт `5432` занят локально | На хосте уже работает PostgreSQL | В `docker-compose.yml` пробросить другой порт (например `5434:5432`) |
-| `password authentication failed for user "postgres"` | Пароль БД не синхронизирован | Проверить `DATABASE_URL` в `.env` совпадает с `POSTGRES_PASSWORD` в `docker-compose.yml` |
+| Порт `5432` занят на хосте | На хосте уже работает PostgreSQL | В `docker-compose.yml` проброс `5434:5432` уже используется; при конфликте смените порт |
+| `password authentication failed for user "postgres"` | Пароль БД не синхронизирован | Проверить, что `DATABASE_URL` в `.env` совпадает с `POSTGRES_PASSWORD` в `docker-compose.yml` |
 | Бот не отвечает в Telegram | Неверный `BOT_TOKEN` или бот уже запущен elsewhere (конфликт polling) | Проверить токен через Telegram API; остановить другие экземпляры бота |
 | Ошибки 429 / 5xx от OpenAI | Превышен rate limit или неверный `OPENAI_API_KEY` | Проверить ключ и лимиты аккаунта; модель должна существовать в аккаунте |
-| Ошибка `getaddrinfo EAI_AGAIN db` | `bot` и `db` в разных сетях | Запускать оба через один `docker compose` (общая сеть создаётся автоматически) |
-| Символ `$` в пароле БД не работает | Docker Compose интерполирует `$` | Экранировать как `$$` в `.env` |
+| `getaddrinfo EAI_AGAIN db` | `bot` и `db` в разных сетях | Запускать оба через один `docker compose` (общая сеть создаётся автоматически) |
+| `$` в пароле БД не работает | Docker Compose интерполирует `$` | Экранировать как `$$` в `.env` |
+| `RuntimeError: No topic files found` | Нет `topics/*.json` и БД пуста | Положите хотя бы один `topics/<id>.json` или создайте тему через `/new_topic` после первого старта |
+| `/start` отвечает «No active topic configured» | Активная тема не задана | Выполните `/set_topic <id>` администратором (см. [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)) |
 
-## 🧪 10. Проверка запуска (минимальный smoke-test)
+---
 
-1. `docker compose ps` — `db` и `bot` `Up`/`healthy`.
-2. `docker compose logs bot | tail` — есть `Start polling for bot @…`.
-3. В Telegram `/start` — бот отвечает, называет тему, просит имя.
-4. После тестовой сессии:
-   `docker compose exec db psql -U postgres -d onboarding -c "SELECT count(*) FROM training_results;"`
-   — счётчик увеличился.
+## ℹ️ 15. Особенности версии
 
-Полный воспроизводимый прогон (включая чистое окружение) — см.
-`DEPLOYMENT_VALIDATION_REPORT.md`.
+- Системные промпты вынесены в `prompts/` и версионированы (`prompts_version` в конфиге темы).
+- Темы-заготовки в `topics/` сидируются в БД при старте; runtime-хранилище тем — PostgreSQL (`training_topics`).
+- Активная тема хранится в БД (`bot_settings`), а не в `.env`; `.env ACTIVE_TOPIC` — только начальное значение при первом старте.
+- Сессии обучения — в памяти (`MemoryStorage`); прогресс активной сессии теряется при рестарте, завершённые результаты — в PostgreSQL.
+- Данные PostgreSQL сохраняются благодаря volume `postgres_data`.
 
-## ℹ️ 11. Особенности версии
+---
 
-- Системные промпты вынесены в `prompts/` и версионированы.
-- Темы обучения вынесены в `topics/`.
-- Сессии хранятся в памяти (`MemoryStorage`).
-- PostgreSQL-данные сохраняются благодаря volume `postgres_data`.
+## 🔐 16. Безопасность
+
+- `.env` не коммитировать в репозиторий (уже в `.gitignore`).
+- API-ключи хранить только на сервере.
+- Доступ к управлению темами — только для `ADMIN_USER_ID` (RBAC).
+- Подробнее — [`docs/SECURITY_NOTES.md`](SECURITY_NOTES.md).
+
+---
+
+## 📚 Связанные документы
+
+- [🏠 `README.md`](../README.md) — главная страница проекта.
+- [🏗️ `docs/ARCHITECTURE.md`](ARCHITECTURE.md) — архитектура системы.
+- [📖 `docs/USER_GUIDE.md`](USER_GUIDE.md) — как пройти обучение сотруднику.
+- [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — как управлять темами оператору.
+- [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов.
+- [🔐 `docs/SECURITY_NOTES.md`](SECURITY_NOTES.md) — безопасность, RBAC, секреты.
