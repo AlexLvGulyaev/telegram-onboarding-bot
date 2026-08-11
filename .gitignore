@@ -1,16 +1,46 @@
+# --- Секреты ---
 .env
+.env.local
+.env.*.local
+
+# --- Python ---
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.pyc
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+coverage/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- Виртуальные окружения ---
 venv/
 .venv/
+env/
+
+# --- IDE / редакторы ---
 .idea/
 .vscode/
-postgres_data/
+*.swp
+*.swo
 
-# Внутренние артефакты лаборатории (правило публичной/внутренней границы APL):
+# --- Инфраструктура проекта ---
+postgres_data/
+*.log
+
+# --- Внутренние артефакты лаборатории (правило публичной/внутренней границы APL): ---
 # не публикуются в публичный репозиторий.
 attachments/
 task_history/
+PROJECT_GOAL.md
+MEMORY.md

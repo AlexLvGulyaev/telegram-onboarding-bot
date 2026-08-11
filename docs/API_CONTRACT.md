@@ -185,6 +185,9 @@ Webhook **не используется**, публичный хост не ну
 > `prompts/v1/system.md` (см. `PROMPT_ARCHITECTURE.md`, раздел о двухслойной
 > архитектуре).
 
+> 📦 **Примеры ответов** по фазам (`learning`, `testing`, `completed`) — в
+> каталоге [📦 `docs/examples/`](examples/).
+
 ---
 
 ## 🔐 5. Переменные окружения контрактов

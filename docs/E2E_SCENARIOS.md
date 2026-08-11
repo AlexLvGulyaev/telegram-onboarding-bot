@@ -59,6 +59,6 @@
 
 ## 6. Артефакты тестирования
 
-- Скриншоты диалогов: `attachments/screenshots/`
+- Скриншоты диалогов: `docs/screenshots/` (публичные, см. `docs/screenshots/MEDIA_INDEX.md`)
 - Логи контейнера: `docker compose logs bot --tail 100`
 - Записи из БД: `docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training_results;"`

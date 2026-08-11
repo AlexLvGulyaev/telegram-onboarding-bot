@@ -11,14 +11,14 @@
 
 ---
 
-## Требования
+## 🧰 1. Требования
 
 - Установленный Docker.
 - Установленный Docker Compose (плагин `docker compose`, не `docker-compose` v1).
 - Telegram-бот и его токен (`BOT_TOKEN`).
 - Ключ OpenAI API (`OPENAI_API_KEY`).
 
-## Локальный запуск
+## ▶️ 2. Локальный запуск
 
 1. Скопируйте `.env.example` в `.env`:
 
@@ -74,7 +74,7 @@ docker compose logs bot | tail
 Ожидаемая строка: `Start polling for bot @<your_bot>`. Если вместо неё ошибка
 иморта или traceback — см. раздел «Типовые проблемы».
 
-## Проверка базы данных
+## 🗄️ 3. Проверка базы данных
 
 ### Вариант 1: psql из контейнера
 
@@ -90,7 +90,7 @@ docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training
 - User: `postgres`
 - Password: `postgres`
 
-## Проверка бота
+## 🧪 4. Проверка бота
 
 1. Откройте Telegram, найдите своего бота.
 2. Отправьте `/start`.
@@ -99,7 +99,7 @@ docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training
 5. Убедитесь, что результат сохранился в PostgreSQL.
 6. Для смены темы отправьте `/topic` и выберите другую тему.
 
-## Управление темами через Telegram-админку
+## 🎛️ 5. Управление темами через Telegram-админку
 
 Администратор (пользователь с `ADMIN_USER_ID`) может управлять темами прямо в боте:
 
@@ -113,7 +113,7 @@ docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training
 
 Добавленная тема сохраняется как `topics/<id>.json` и сразу доступна для обучения.
 
-## Добавление новой темы вручную
+## ✏️ 6. Добавление новой темы вручную
 
 1. Создайте файл `topics/<id>.json`:
 
@@ -134,7 +134,7 @@ docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training
 docker compose up -d --force-recreate bot
 ```
 
-## Остановка
+## 🛑 7. Остановка
 
 ```bash
 docker compose down
@@ -146,7 +146,7 @@ docker compose down
 docker compose down -v
 ```
 
-## Перенос на VPS
+## 🖥️ 8. Перенос на VPS
 
 1. Подключитесь к серверу по SSH.
 2. Установите Docker и плагин Docker Compose (v2):
@@ -170,7 +170,7 @@ cd telegram-onboarding-bot
 docker compose up --build -d
 ```
 
-## Типовые проблемы
+## 🛠️ 9. Типовые проблемы
 
 | Симптом | Причина | Решение |
 |---------|---------|---------|
@@ -182,7 +182,7 @@ docker compose up --build -d
 | Ошибка `getaddrinfo EAI_AGAIN db` | `bot` и `db` в разных сетях | Запускать оба через один `docker compose` (общая сеть создаётся автоматически) |
 | Символ `$` в пароле БД не работает | Docker Compose интерполирует `$` | Экранировать как `$$` в `.env` |
 
-## Проверка запуска (минимальный smoke-test)
+## 🧪 10. Проверка запуска (минимальный smoke-test)
 
 1. `docker compose ps` — `db` и `bot` `Up`/`healthy`.
 2. `docker compose logs bot | tail` — есть `Start polling for bot @…`.
@@ -194,7 +194,7 @@ docker compose up --build -d
 Полный воспроизводимый прогон (включая чистое окружение) — см.
 `DEPLOYMENT_VALIDATION_REPORT.md`.
 
-## Особенности версии
+## ℹ️ 11. Особенности версии
 
 - Системные промпты вынесены в `prompts/` и версионированы.
 - Темы обучения вынесены в `topics/`.

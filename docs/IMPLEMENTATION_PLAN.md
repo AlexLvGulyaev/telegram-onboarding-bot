@@ -147,7 +147,7 @@ Bot API (правило external-integration SOT).
 - [x] Создать `docs/PROMPT_ARCHITECTURE.md`.
 - [x] Создать `docs/E2E_SCENARIOS.md` с чек-листом скриншотов.
 - [x] Создать `docs/BUSINESS_VALUE.md`.
-- [ ] При необходимости — `docs/SECURITY_NOTES.md`.
+- [x] `docs/SECURITY_NOTES.md` — создан.
 
 ### Этап 5. Повторное тестирование улучшенной версии
 
