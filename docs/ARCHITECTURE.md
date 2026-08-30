@@ -17,8 +17,8 @@ Telegram Onboarding Bot — MVP Telegram-бота для первичного о
 - **Промпты и темы внешние и версионированы.** `prompts/<version>/system.md` + `response-schema.json` и `topics/<id>.json` лежат вне кода; активная версия промпта задаётся в конфиге темы (`prompts_version`), редактируется без правки кода.
 - **JSON Schema ответа LLM — строгая, валидируется Pydantic.** `TrainingAssistantTurn` со схемой `additionalProperties: false` обязывает модель вернуть предопределённую структуру.
 - **Дедупликация вопросов двух уровней.** Ключевые слова и перекрытие слов в `TrainingService._is_duplicate` + embedding-сравнение (косинусная близость ≥ 0.72) в `AITrainingService` — против переформулировок.
-- **Сессии в памяти** (`MemoryStorage`); завершённые результаты — в PostgreSQL. Активная тема хранится в БД (`bot_settings`), а не в `.env`.
-- **RBAC для админ-команд.** Управление темами доступно только пользователю с `ADMIN_USER_ID`; `/topic` для смены темы пользователем не закрыт (см. «Ограничения»).
+- **Сессии в Redis** (`RedisStorage`, `REDIS_URL`; пустое значение — `MemoryStorage` для dev); завершённые результаты — в PostgreSQL. Активная сессия переживает рестарт бота. Активная тема хранится в БД (`bot_settings`), а не в `.env`.
+- **RBAC через единую точку.** Управление темами и смена глобальной темы (`/topic <id>`, `/set_topic` и другие) доступны только пользователю с `ADMIN_USER_ID` (`bot/access.py::is_admin`); `/topic` без аргумента — read-only список для всех.
 
 ---
 
@@ -39,6 +39,7 @@ flowchart TD
         OA[OpenAI API]
         TB[Telegram Bot API]
         DB[(PostgreSQL)]
+        R[(Redis)]
     end
 
     S -->|сообщение| B
@@ -47,6 +48,7 @@ flowchart TD
     B -->|Chat Completions + Embeddings| OA
     B -->|long polling| TB
     B -->|результат, темы| DB
+    B -->|FSM-сессии| R
 ```
 
 ---
@@ -73,7 +75,7 @@ services/prompt_loader.py"]
         REP["Repositories
 database/repository.py"]
         FSM["FSM storage
-aiogram MemoryStorage"]
+aiogram RedisStorage"]
     end
 
     subgraph "Внешние системы и конфиги"
@@ -103,7 +105,8 @@ topics/"]
 | Компонент | Файл | Назначение |
 |-----------|------|------------|
 | Точка входа | `main.py` | Логирование, инициализация БД, восстановление активной темы, запуск polling |
-| Обработчики | `bot/handlers/onboarding.py` | `/start`, `/topic`, `/cancel`, FSM-сессия, guard-fallback |
+| Обработчики | `bot/handlers/onboarding.py` | `/start`, `/help`, `/topic`, `/cancel`, FSM-сессия, guard-fallback |
+| RBAC | `bot/access.py` | Единая точка `is_admin()` для всех команд управления темами |
 | Админ-роутер | `bot/handlers/admin.py` | `/admin`, `/new_topic`, `/import_topic`, `/list_topics`, `/set_topic`, `/delete_topic` (RBAC) |
 | Клавиатуры | `bot/keyboards/common.py` | Reply-клавиатура «Отмена», удаление клавиатуры |
 | Middleware | `bot/middlewares/logging.py` | Логирование входящих сообщений |
@@ -236,7 +239,7 @@ flowchart LR
 
 ### 8.2. In-memory: `TrainingSessionDraft`
 
-Состояние активной сессии в FSM (`MemoryStorage`):
+Состояние активной сессии в FSM (`RedisStorage`; dev-режим — `MemoryStorage`):
 
 | Поле | Тип | Описание |
 |------|-----|----------|
@@ -296,13 +299,19 @@ flowchart LR
 ### 10.1. Обработка в обработчиках
 
 - `except ValueError` в `process_ai_training` — показывает сообщение ошибки пользователю (например, «Укажите имя сотрудника хотя бы из двух символов»).
+- `except AITrainingUnavailableError` — сбои OpenAI API после исчерпания retry: дружелюбное сообщение, **сессия сохраняется** (draft уже в FSM, продолжение следующим сообщением).
 - `except Exception` — логирует traceback и отвечает общим сообщением «Не удалось обработать сообщение. Попробуйте еще раз или отправьте /cancel».
 - Неподдерживаемые типы сообщений (голосовые, файлы, стикеры) — отдельный роутер просит ответить текстом.
 
-### 10.2. HTTP-вызовы OpenAI
+### 10.2. HTTP-вызовы OpenAI (retry-политика)
 
 - `httpx.AsyncClient` с таймаутом 120 с (connect — 30 с).
-- `response.raise_for_status()` бросает исключение на HTTP-ошибках (4xx/5xx), которое ловится на уровне handler как общая ошибка. **Явного retry на 429/5xx нет** — в отличие от ботов с устойчивым fallback на уровне сервиса, здесь отказ API прерывает ход диалога и требует повторной отправки сообщения сотрудником.
+- POST-запросы идут через `AITrainingService._post_with_retry`:
+  - retry на **транзиентные** сбои — HTTP 429, 5xx, `httpx.TransportError`;
+  - клиентские 4xx (400/401/403/404) **не** ретраются — повтор не поможет;
+  - до `OPENAI_MAX_RETRIES` попыток (по умолчанию 3), экспоненциальная задержка `OPENAI_RETRY_BACKOFF` (по умолчанию 1.5 с: ~1.5s → 2.25s → 3.4s…) с джиттером +20%;
+  - заголовок `Retry-After` от API приоритетнее расчётной задержки;
+  - исчерпание попыток → `AITrainingUnavailableError` (обработчик выше).
 
 ### 10.3. Fallback от некорректных ответов модели (guard)
 
@@ -330,9 +339,9 @@ flowchart LR
 
 ## ⚠️ 11. Ограничения и следующие шаги
 
-- **Сессии в памяти.** Прогресс активной сессии теряется при перезапуске бота. Для продакшена — Redis/PostgreSQL-хранилище FSM.
-- **Нет retry при сбое OpenAI API.** Временная недоступность API прерывает ход диалога. Стоит добавить retry на 429/5xx с экспоненциальной задержкой.
-- **`/topic <id>` не закрыт RBAC.** Любой пользователь меняет глобальную активную тему для всех. См. [`docs/SECURITY_NOTES.md`](SECURITY_NOTES.md).
+- **~Сессии в памяти.~** Закрыто 30.08: FSM в `RedisStorage` (`REDIS_URL`, сервис `redis` в compose, volume `redis_data`); пустое значение — MemoryStorage (dev).
+- **~Нет retry при сбое OpenAI API.~** Закрыто 30.08: `_post_with_retry` на 429/5xx/сеть, `OPENAI_MAX_RETRIES`/`OPENAI_RETRY_BACKOFF`.
+- **~`/topic <id>` не закрыт RBAC.~** Закрыто 30.08: смену глобальной темы подтверждает только админ (`bot/access.py::is_admin`); `/topic` без аргумента — read-only.
 - **Один активный оператор.** `ADMIN_USER_ID` — единственный администратор; нет ролевой модели.
 - **Нет аудита** всех сообщений и ошибок в постоянное хранилище.
 - **Abstraction LLM-провайдера.** OpenAI захардкожен; замена требует обобщения `AITrainingService`.
