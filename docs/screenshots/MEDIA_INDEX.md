@@ -73,6 +73,8 @@ GitHub. Внутренние свидетельства тестирования
 | 6 | `TOB_admin_new_topic.png` | `admin` | Создание темы через `/new_topic`: пошаговый FSM-диалог (id → название → описание → материал) → «✅ Тема сохранена» | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `E2E_SCENARIOS.md` |
 | 7 | `TOB_admin_list_set.png` | `admin` | Управление темами: `/list_topics` (список с отметкой активной) → `/set_topic <id>` (активация темы по умолчанию) | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `E2E_SCENARIOS.md` |
 | 8 | `TOB_admin_denied.png` | `admin` | RBAC: админ-команда (`/admin`, `/new_topic`) от не-администратора отклоняется — «Эта команда доступна только администратору» | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `SECURITY_NOTES.md` |
+| 9 | `TOB_portfolio_light.png` | `ui` | Портфельная иллюстрация LIGHT — пользовательский сценарий (бриф: `task_history/2026-08-23_task-portfolio-illustrations-brief.md`) | `README.md`, бизнес-материалы портфолио |
+| 10 | `TOB_portfolio_dark.png` | `admin` | Портфельная иллюстрация DARK — инженерный сценарий (бриф №2 из той же задачи) | Бизнес-материалы портфолио |
 
 ---
 
