@@ -1,6 +1,7 @@
 # --- Секреты ---
 .env
 .env.local
+.env.bak*
 .env.*.local
 
 # --- Python ---

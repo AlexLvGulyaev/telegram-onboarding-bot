@@ -37,6 +37,35 @@ class EditTopicStates(StatesGroup):
     prompts_version = State()
 
 
+async def _guard_wizard_input(message: Message, state: FSMContext, text: str, *, allow_skip: bool) -> bool:
+    """Shared guard for FSM wizard text inputs.
+
+    Wizard handlers match any text while a wizard state is active, otherwise
+    they would swallow commands (/cancel, /help, ...) and strand the operator
+    with no way out. Returns True when the input was consumed here.
+
+    - `/cancel` — exits the wizard, nothing is saved;
+    - `/skip` — handled by the step itself when allow_skip is True, otherwise
+      rejected with a hint;
+    - any other command — rejected with a hint.
+    """
+    if not text.startswith("/"):
+        return False
+    if text == "/cancel":
+        await state.clear()
+        await message.answer("Отменено. Введённые данные не сохранены. Для новой сессии отправьте команду ещё раз.")
+        return True
+    if text == "/skip":
+        if allow_skip:
+            return False
+        await message.answer("На этом шаге /skip недоступен: поле обязательное. Введите значение или /cancel, чтобы выйти.")
+        return True
+    await message.answer(
+        "Команды внутри визарда не обрабатываются. Завершите ввод или отправьте /cancel, чтобы выйти."
+    )
+    return True
+
+
 @router.message(Command("admin"))
 async def handle_admin(message: Message, settings: Settings) -> None:
     if not _is_admin(message, settings):
@@ -74,7 +103,10 @@ async def handle_new_topic_start(
 
 @router.message(AdminTopicStates.id, F.text)
 async def handle_topic_id(message: Message, state: FSMContext) -> None:
-    raw_id = (message.text or "").strip().lower().replace(" ", "-")
+    text = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, text, allow_skip=False):
+        return
+    raw_id = text.lower().replace(" ", "-")
     if not raw_id or not raw_id.replace("-", "").replace("_", "").isalnum():
         await message.answer(
             "Идентификатор должен содержать только латинские буквы, цифры, дефисы и подчёркивания. Попробуйте ещё раз."
@@ -89,6 +121,8 @@ async def handle_topic_id(message: Message, state: FSMContext) -> None:
 @router.message(AdminTopicStates.name, F.text)
 async def handle_topic_name(message: Message, state: FSMContext) -> None:
     name = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, name, allow_skip=False):
+        return
     if len(name) < 2:
         await message.answer("Название должно быть не короче 2 символов. Попробуйте ещё раз.")
         return
@@ -101,6 +135,8 @@ async def handle_topic_name(message: Message, state: FSMContext) -> None:
 @router.message(AdminTopicStates.description, F.text)
 async def handle_topic_description(message: Message, state: FSMContext) -> None:
     description = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, description, allow_skip=False):
+        return
     if len(description) < 10:
         await message.answer("Описание должно быть не короче 10 символов. Попробуйте ещё раз.")
         return
@@ -120,6 +156,8 @@ async def handle_topic_material(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     material = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, material, allow_skip=False):
+        return
     if len(material) < 10:
         await message.answer("Материал должен быть не короче 10 символов. Попробуйте ещё раз.")
         return
@@ -379,6 +417,8 @@ async def _ask_next_field(
 @router.message(EditTopicStates.name, F.text)
 async def handle_edit_topic_name(message: Message, state: FSMContext, settings: Settings) -> None:
     text = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, text, allow_skip=True):
+        return
     if text != "/skip":
         if len(text) < 2:
             await message.answer("Название должно быть не короче 2 символов. Попробуйте ещё раз.")
@@ -391,6 +431,8 @@ async def handle_edit_topic_name(message: Message, state: FSMContext, settings: 
 @router.message(EditTopicStates.description, F.text)
 async def handle_edit_topic_description(message: Message, state: FSMContext, settings: Settings) -> None:
     text = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, text, allow_skip=True):
+        return
     if text != "/skip":
         if len(text) < 10:
             await message.answer("Описание должно быть не короче 10 символов. Попробуйте ещё раз.")
@@ -403,6 +445,8 @@ async def handle_edit_topic_description(message: Message, state: FSMContext, set
 @router.message(EditTopicStates.material, F.text)
 async def handle_edit_topic_material(message: Message, state: FSMContext, settings: Settings) -> None:
     text = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, text, allow_skip=True):
+        return
     if text != "/skip":
         if len(text) < 10:
             await message.answer("Материал должен быть не короче 10 символов. Попробуйте ещё раз.")
@@ -426,6 +470,8 @@ async def handle_edit_topic_prompts_version(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     text = (message.text or "").strip()
+    if await _guard_wizard_input(message, state, text, allow_skip=True):
+        return
     if text != "/skip":
         # Mirrors PromptLoader: a version is usable when
         # prompts/<version>/system.md exists, otherwise sessions would crash
