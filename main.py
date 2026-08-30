@@ -5,6 +5,7 @@ import logging.config
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.redis import RedisStorage
 
 from bot.handlers import admin_router, router
 from bot.middlewares import LoggingMiddleware
@@ -52,7 +53,16 @@ async def run_bot() -> None:
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    storage = MemoryStorage()
+    # FSM sessions persist across bot restarts when REDIS_URL is set (default in
+    # docker compose). An empty REDIS_URL falls back to in-memory storage: a
+    # development mode where progress is lost on restart (documented in the
+    # deployment guide).
+    if settings.redis_url:
+        storage = RedisStorage.from_url(settings.redis_url)
+        logger.info("FSM storage: Redis (%s)", settings.redis_url)
+    else:
+        storage = MemoryStorage()
+        logger.info("FSM storage: in-memory (REDIS_URL is empty, development mode)")
     bot = Bot(token=settings.bot_token, default=DefaultBotProperties())
     dp = Dispatcher(storage=storage)
 
