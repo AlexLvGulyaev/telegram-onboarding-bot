@@ -34,6 +34,8 @@
 | **Локальный запуск** | Разработка, ручное тестирование | Docker, Docker Compose v2 |
 | **Production на VPS** | Публичный бот для сотрудников | VPS, Docker, SSH |
 
+Compose поднимает три сервиса: `db` (PostgreSQL 16, результаты и темы), `redis` (FSM-сессии), `bot` (long polling Telegram).
+
 ---
 
 ## 📋 4. Требования
@@ -59,11 +61,15 @@ DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/onboarding
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_MODEL=gpt-5.4-mini-2026-03-17
 OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MAX_RETRIES=3
+OPENAI_RETRY_BACKOFF=1.5
 
 ADMIN_USER_ID=your_telegram_user_id
 
 ACTIVE_TOPIC=onboarding
 PROMPTS_DIR=prompts
+
+REDIS_URL=redis://redis:6379/0
 
 QUIZ_QUESTION_COUNT=5
 LOG_LEVEL=INFO
@@ -75,6 +81,9 @@ LOG_LEVEL=INFO
 - `DATABASE_URL` — для docker compose используется сервис `db` (оставьте как в примере). При внешней БД укажите её URL.
 - `OPENAI_API_KEY` — из личного кабинета OpenAI.
 - `OPENAI_MODEL` — модель OpenAI. Убедитесь, что она доступна в вашем аккаунте.
+- `OPENAI_MAX_RETRIES` — число попыток при временных сбоях OpenAI API (429 / 5xx / сеть), по умолчанию 3. Клиентские ошибки (400/401/403) не повторяются.
+- `OPENAI_RETRY_BACKOFF` — база экспоненциальной задержки между попытками в секундах (по умолчанию 1.5: ~1.5s, 2.25s, 3.4s… + джиттер). Заголовок `Retry-After` от API приоритетнее.
+- `REDIS_URL` — адрес Redis для FSM-сессий (сервис `redis` из docker compose). Активные сессии обучения переживают рестарт контейнера бота. Пустое значение (`REDIS_URL=`) — сессии в памяти (MemoryStorage): dev-режим, прогресс теряется при рестарте; завершённые результаты в PostgreSQL в обоих режимах.
 - `ADMIN_USER_ID` — ваш числовой Telegram user ID. Узнать: отправьте любое сообщение боту [@userinfobot](https://t.me/userinfobot) или выполните `curl -s "https://api.telegram.org/bot<BOT_TOKEN>/getUpdates" | jq '.result[-1].message.from.id'`.
 - `ACTIVE_TOPIC` — id темы, которая станет активной при первом старте (пока в БД нет активной темы). Тема с этим id **должна уже быть в БД** — загрузите её через `/import_topic` (из `topics/*.json`) или `/new_topic` после первого запуска. Применяется **только при первом старте**; на работающей системе активная тема меняется через `/set_topic` (см. [`docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md)). Если указанная тема отсутствует в БД — `main.py` сбросит её и запишет предупреждение в лог, бот стартует без активной темы.
 - `PROMPTS_DIR` — каталог версионированных промптов (по умолчанию `prompts`).
@@ -103,7 +112,7 @@ docker compose up --build
 Проверка:
 
 ```bash
-docker compose ps        # сервисы db и bot со статусом Up / healthy
+docker compose ps        # сервисы db, redis и bot со статусом Up / healthy
 docker compose logs bot | tail   # ожидаемая строка: Start polling for bot @<your_bot>
 ```
 
@@ -179,13 +188,15 @@ docker compose logs bot | tail
 
 ## 🧪 9. Проверка запуска (smoke test)
 
-1. `docker compose ps` — `db` и `bot` со статусом `Up` / `healthy`.
-2. `docker compose logs bot | tail` — есть `Start polling for bot @…`.
+1. `docker compose ps` — `db`, `redis` и `bot` со статусом `Up` / `healthy`.
+2. `docker compose logs bot | tail` — есть `Start polling for bot @…` и `FSM storage: Redis`.
 3. В Telegram (от имени администратора) `/import_topic` — загрузить темы-заготовки из `topics/*.json` в БД. Ответ: «Импортировано/обновлено тем: N (...)».
-4. `/set_topic onboarding` — назначить активную тему.
-5. `/start` — бот отвечает, называет тему, просит имя сотрудника.
-6. Пройдите обучение и тест до итогового балла.
-7. Проверьте сохранение в БД:
+4. `/list_topics` — темы в списке, у активной пометка ✅.
+5. `/set_topic onboarding` — назначить активную тему.
+6. `/start` — бот отвечает, называет тему, просит имя сотрудника.
+7. `/edit_topic <id>`: на шаге «Материал» отправьте `/skip`, на шаге «Версия промптов» — `/skip`; бот подтвердит, что тема обновлена без изменений (проверка команды редактирования).
+8. Пройдите обучение и тест до итогового балла.
+9. Проверьте сохранение в БД:
    ```bash
    docker compose exec db psql -U postgres -d onboarding -c "SELECT count(*) FROM training_results;"
    ```
@@ -208,7 +219,7 @@ docker compose logs bot | tail
 - `/import_topic` — загрузить **все** файлы `topics/*.json` в БД;
 - `/import_topic <id>` — загрузить один `topics/<id>.json`.
 
-Импорт идёт через `create_or_update` — **перезаписывает** все поля темы, включая `prompts_version`. Поэтому `/import_topic <id>` — это и способ обновить существующую тему после правки её файла, и способ перевести тему на новую версию промпта.
+Импорт идёт через `create_or_update` — **перезаписывает** все поля темы, включая `prompts_version`. Поэтому `/import_topic <id>` — это и способ обновить существующую тему после правки её файла, и способ перевести тему на новую версию промпта. Для тем, созданных через `/new_topic` (без файла-заготовки), правка — командой `/edit_topic <id>` (администратор редактирует name/description/material/prompts_version по шагам, `/skip` — оставить поле).
 
 **Добавить свою тему-заготовку** (для поставки с репозиторием):
 
@@ -286,7 +297,9 @@ docker compose down -v
 | Порт `5432` занят на хосте | На хосте уже работает PostgreSQL | В `docker-compose.yml` проброс `5434:5432` уже используется; при конфликте смените порт |
 | `password authentication failed for user "postgres"` | Пароль БД не синхронизирован | Проверить, что `DATABASE_URL` в `.env` совпадает с `POSTGRES_PASSWORD` в `docker-compose.yml` |
 | Бот не отвечает в Telegram | Неверный `BOT_TOKEN` или бот уже запущен elsewhere (конфликт polling) | Проверить токен через Telegram API; остановить другие экземпляры бота |
-| Ошибки 429 / 5xx от OpenAI | Превышен rate limit или неверный `OPENAI_API_KEY` | Проверить ключ и лимиты аккаунта; модель должна существовать в аккаунте |
+| `OpenAI API недоступен после N попыток` в ответе пользователю | OpenAI API недоступен дольше серии retry | Проверить ключ (`docker compose logs bot`), лимиты аккаунта; сессия сохранена — повторите сообщение позже |
+| Бот пишет «FSM storage: in-memory» | Пустой `REDIS_URL` в `.env` (dev-режим) | Задать `REDIS_URL=redis://redis:6379/0` и пересоздать bot (`docker compose up -d`) |
+| Ошибки 429 / 5xx от OpenAI | Превышен rate limit или неверный `OPENAI_API_KEY` | Проверить ключ и лимиты аккаунта; модель должна существовать в аккаунте. Транзиентные сбои теперь ретраятся автоматически |
 | `getaddrinfo EAI_AGAIN db` | `bot` и `db` в разных сетях | Запускать оба через один `docker compose` (общая сеть создаётся автоматически) |
 | `$` в пароле БД не работает | Docker Compose интерполирует `$` | Экранировать как `$$` в `.env` |
 | `/start` отвечает «Тем обучения пока нет» | БД пуста, темы не загружены | Администратор: `/import_topic` (загрузить из `topics/*.json`) или `/new_topic` (создать вручную), затем `/set_topic <id>` |
@@ -300,8 +313,11 @@ docker compose down -v
 - Системные промпты вынесены в `prompts/` и версионированы (`prompts_version` в конфиге темы).
 - Единственный источник тем — PostgreSQL (`training_topics`); темы-заготовки из `topics/` загружаются командой `/import_topic` (не автоматически при старте).
 - Бот стартует при пустой БД и без `topics/`; `/start` без активной темы отвечает подсказкой, не падает.
+- Временные сбои OpenAI API (429 / 5xx / сеть) повторяются с экспоненциальной задержкой (`OPENAI_MAX_RETRIES`/`OPENAI_RETRY_BACKOFF`); после исчерпания попыток диалог сохраняется, пользователь получает сообщение о сбое.
+- FSM-сессии обучения хранятся в Redis (сервис `redis`, volume `redis_data`) и переживают рестарт бота; пустой `REDIS_URL` — MemoryStorage (dev-режим).
+- `/topic <id>` доступен только администратору (смена глобальной темы); `/topic` без аргумента — read-only список для всех.
 - Активная тема хранится в БД (`bot_settings`), а не в `.env`; `.env ACTIVE_TOPIC` — только начальное значение при первом старте (тема должна быть в БД).
-- Сессии обучения — в памяти (`MemoryStorage`); прогресс активной сессии теряется при рестарте, завершённые результаты — в PostgreSQL.
+- Сессии обучения — в Redis (`REDIS_URL`); активная сессия переживает рестарт бота. Завершённые результаты — в PostgreSQL.
 - Данные PostgreSQL сохраняются благодаря volume `postgres_data`.
 
 ---
@@ -310,7 +326,7 @@ docker compose down -v
 
 - `.env` не коммитировать в репозиторий (уже в `.gitignore`).
 - API-ключи хранить только на сервере.
-- Доступ к управлению темами — только для `ADMIN_USER_ID` (RBAC).
+- Доступ к управлению темами (`/new_topic`, `/edit_topic`, `/set_topic`, `/delete_topic`, `/topic <id>`, `/import_topic`) — только для `ADMIN_USER_ID` (RBAC).
 - Подробнее — [`docs/SECURITY_NOTES.md`](SECURITY_NOTES.md).
 
 ---
