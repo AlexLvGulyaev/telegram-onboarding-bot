@@ -128,12 +128,19 @@ docker compose logs bot | tail   # ожидаемая строка: Start pollin
 docker compose exec db psql -U postgres -d onboarding -c "SELECT * FROM training_results;"
 ```
 
-### Вариант 2: DBeaver (через SSH-туннель или напрямую)
+### Вариант 2: DBeaver (только через SSH-туннель)
 
-- Host: `localhost`
-- Port: `5434` (проброшен в `docker-compose.yml` как `5434:5432`)
-- Database: `onboarding`
-- User / Password: `postgres` / `postgres`
+Порт `5434` проброшен в `docker-compose.yml` как `127.0.0.1:5434:5432` — он доступен
+только на самом хосте и **не открыт в интернет**. Поэтому с рабочего компьютера
+подключайтесь через SSH-туннель:
+
+```bash
+ssh -L 5434:127.0.0.1:5434 YOUR_VPS_IP
+```
+
+В DBeaver: Host `localhost`, Port `5434`, Database `onboarding`, User `postgres`.
+Пароль — значение `POSTGRES_PASSWORD` из `.env` сервера (не дефолт из этого
+гайда, если на вашем инстансе он был заменён).
 
 ---
 

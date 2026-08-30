@@ -4,14 +4,16 @@ services:
     environment:
       POSTGRES_DB: onboarding
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d onboarding"]
       interval: 5s
       timeout: 5s
       retries: 10
     ports:
-      - "5434:5432"
+      # Bound to loopback: reachable on the host (SSH tunnel / DBeaver) but not exposed
+      # to the internet. The bot itself connects via the internal compose network.
+      - "127.0.0.1:5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
