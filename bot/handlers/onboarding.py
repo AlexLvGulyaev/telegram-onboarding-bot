@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from bot.access import is_admin
+from bot.access import is_admin as _is_admin
 from bot.keyboards import cancel_keyboard, remove_keyboard
 from config import Settings
 from database import BotSettingsRepository, TrainingResultRepository, TrainingTopicRepository
@@ -263,6 +263,31 @@ async def handle_cancel(message: Message, state: FSMContext) -> None:
         "Сессия обучения отменена. Чтобы начать заново, отправьте /start.",
         reply_markup=remove_keyboard(),
     )
+
+
+@router.message(Command("help"))
+async def handle_help(message: Message, settings: Settings) -> None:
+    text = (
+        "🤖 AI-наставник по обучению\n\n"
+        "Доступные команды:\n"
+        "/start — начать обучение по активной теме (объяснение материала + тест)\n"
+        "/topic — список тем обучения\n"
+        "/cancel — прервать текущую сессию\n\n"
+        "Просто напишите /start — бот сам всё объяснит по шагам."
+    )
+    if _is_admin(message, settings):
+        text += (
+            "\n\n👨‍💼 Команды администратора:\n"
+            "/admin — панель администратора\n"
+            "/new_topic — создать тему\n"
+            "/import_topic [id] — импорт тем из topics/*.json\n"
+            "/list_topics — список тем с активной\n"
+            "/edit_topic <id> — отредактировать тему\n"
+            "/set_topic <id> — активная тема для всех\n"
+            "/topic <id> — сменить активную тему\n"
+            "/delete_topic <id> — удалить тему"
+        )
+    await message.answer(text, reply_markup=remove_keyboard())
 
 
 @router.message(TrainingStates.active, F.text)
