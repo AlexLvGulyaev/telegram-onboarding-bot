@@ -505,6 +505,6 @@ async def handle_edit_topic_prompts_version(
 
     await state.clear()
     await message.answer(
-        f"✅ Тема «{topic.id}» обновлена (v.{topic.prompts_version}).\n\n"
+        f"✅ Тема «{topic.id}» обновлена ({topic.prompts_version}).\n\n"
         "Изменения применяются на следующих /start (идущая сессия продолжает старую тему)."
     )
