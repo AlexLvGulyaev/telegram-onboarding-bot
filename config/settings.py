@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4.1-mini", alias="OPENAI_MODEL")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
+    # Retry policy for transient OpenAI failures (429 / 5xx / network errors).
+    openai_max_retries: int = Field(default=3, alias="OPENAI_MAX_RETRIES", ge=1, le=10)
+    openai_retry_backoff: float = Field(
+        default=1.5, alias="OPENAI_RETRY_BACKOFF", gt=0
+    )
+
+    # Empty value keeps the in-memory FSM storage (development mode).
+    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
 
     prompts_dir: Path = Field(default=Path("prompts"), alias="PROMPTS_DIR")
 

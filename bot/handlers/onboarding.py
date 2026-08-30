@@ -13,6 +13,7 @@ from config import Settings
 from database import BotSettingsRepository, TrainingResultRepository, TrainingTopicRepository
 from schemas import TrainingAssistantTurn, TrainingSessionDraft, TrainingTopicConfig
 from services import AITrainingService, TrainingService
+from services.ai_training_service import AITrainingUnavailableError
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -378,6 +379,16 @@ async def process_ai_training(
         await message.answer(reply_text, reply_markup=cancel_keyboard())
     except ValueError as exc:
         await message.answer(str(exc), reply_markup=cancel_keyboard())
+    except AITrainingUnavailableError:
+        # OpenAI API недоступен после retry. Сессия сохраняется: draft уже
+        # записан в FSM до обращения к модели, пользователь продолжает
+        # следующим сообщением, когда API восстановится.
+        logger.warning("OpenAI API unavailable after retries, session preserved")
+        await message.answer(
+            "Технический сбой: сервис обучения временно недоступен, попробуйте позже. "
+            "Сессия сохранена — просто отправьте следующее сообщение.",
+            reply_markup=cancel_keyboard(),
+        )
     except Exception:
         logger.exception("Failed to process AI training")
         await message.answer(

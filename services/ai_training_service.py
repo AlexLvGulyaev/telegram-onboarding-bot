@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import random
 from collections.abc import Sequence
 
 import httpx
@@ -10,6 +12,14 @@ from schemas import LLMContext, TrainingAssistantTurn, TrainingSessionDraft, Tra
 from services.prompt_loader import PromptLoader
 
 logger = logging.getLogger(__name__)
+
+
+class AITrainingUnavailableError(RuntimeError):
+    """OpenAI API недоступен после исчерпания retry (сеть, 429, 5xx).
+
+    Отличается от guard-fallback: guard-fallback — про некорректные ответы
+    модели, а это — про сбои транспорта/API. Диалог при нём не сбрасывается.
+    """
 
 
 class AITrainingService:
@@ -71,7 +81,7 @@ class AITrainingService:
         }
 
         logger.info("OpenAI request: model=%s, user_message=%r", self._settings.openai_model, user_message)
-        response = await self._client.post("/chat/completions", json=payload)
+        response = await self._post_with_retry("/chat/completions", payload)
         response.raise_for_status()
         response_data = response.json()
         content = response_data["choices"][0]["message"]["content"]
@@ -148,7 +158,7 @@ class AITrainingService:
             "input": list(texts),
         }
         logger.info("OpenAI embeddings request: texts=%d", len(texts))
-        response = await self._client.post("/embeddings", json=payload)
+        response = await self._post_with_retry("/embeddings", payload)
         response.raise_for_status()
         data = response.json()["data"]
         # Sort by index because API does not guarantee order.
@@ -197,6 +207,58 @@ class AITrainingService:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def _post_with_retry(self, path: str, payload: dict) -> httpx.Response:
+        """POST с retry на транзиентные сбои (429/5xx/сеть).
+
+        Клиентские 4xx (400/401/403/404) не ретраятся — это не транзиентные
+        ошибки, повтор не поможет. Исчерпание попыток поднимает
+        AITrainingUnavailableError; диалог сохраняется (см. обработчики).
+        """
+        max_attempts = max(1, self._settings.openai_max_retries)
+        backoff = self._settings.openai_retry_backoff
+        last_error: Exception | None = None
+        response: httpx.Response | None = None
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await self._client.post(path, json=payload)
+            except httpx.TransportError as exc:
+                last_error = exc
+                logger.warning(
+                    "OpenAI transport error (attempt %d/%d): %s", attempt, max_attempts, exc
+                )
+            else:
+                if response.status_code < 500 and response.status_code != 429:
+                    return response
+                last_error = RuntimeError(f"OpenAI API {response.status_code}: {response.text[:200]}")
+                logger.warning(
+                    "OpenAI transient HTTP %d (attempt %d/%d)",
+                    response.status_code,
+                    attempt,
+                    max_attempts,
+                )
+
+            if attempt < max_attempts:
+                retry_after = self._parse_retry_after(response)
+                delay = retry_after if retry_after is not None else backoff**attempt
+                delay *= 1.0 + random.uniform(0, 0.2)  # джиттер против thundering herd
+                logger.info("Retrying OpenAI request in %.1fs", delay)
+                await asyncio.sleep(delay)
+
+        raise AITrainingUnavailableError(f"OpenAI API недоступен после {max_attempts} попыток") from last_error
+
+    @staticmethod
+    def _parse_retry_after(response: httpx.Response | None) -> float | None:
+        if response is None:
+            return None
+        raw = response.headers.get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return None
 
     @staticmethod
     def _build_prompt(
