@@ -8,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.access import is_admin
 from bot.keyboards import cancel_keyboard, remove_keyboard
 from config import Settings
 from database import BotSettingsRepository, TrainingResultRepository, TrainingTopicRepository
@@ -187,13 +188,17 @@ async def handle_start(
 
 async def _list_topics_text(
     session_factory: async_sessionmaker[AsyncSession],
+    settings: Settings,
 ) -> str:
     async with session_factory() as session:
         repository = TrainingTopicRepository(session)
         topics = await repository.list_all()
     if not topics:
         return "Тем пока нет. Создайте первую через /new_topic."
-    lines = [f"/{topic.id} — {topic.name}" for topic in topics]
+    lines = [
+        f"/{topic.id} — {topic.name}" + (" ✅" if topic.id == settings.active_topic_id else "")
+        for topic in topics
+    ]
     return "Доступные темы:\n\n" + "\n".join(lines)
 
 
@@ -206,10 +211,20 @@ async def handle_topic(
 ) -> None:
     args = message.text.split(maxsplit=1) if message.text else []
     if len(args) < 2:
-        topics_text = await _list_topics_text(session_factory)
+        # Read-only listing is available to everyone; switching the global
+        # topic is an operator action (see SECURITY_NOTES).
+        topics_text = await _list_topics_text(session_factory, settings)
         await message.answer(
             topics_text + "\n\n"
-            "Чтобы сменить тему, отправьте /topic <id>. Текущая сессия будет сброшена.",
+            "Смену темы для всех сотрудников выполняет администратор (/set_topic).",
+            reply_markup=remove_keyboard(),
+        )
+        return
+
+    if not _is_admin(message, settings):
+        await message.answer(
+            "Смену темы выполняет администратор.\n\n"
+            "Список тем — отправьте /topic без аргумента.",
             reply_markup=remove_keyboard(),
         )
         return

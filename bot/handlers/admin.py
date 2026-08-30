@@ -8,6 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from bot.access import is_admin as _is_admin
 from config import Settings
 from database import (
     BotSettingsRepository,
@@ -27,10 +28,13 @@ class AdminTopicStates(StatesGroup):
     material = State()
 
 
-def _is_admin(message: Message, settings: Settings) -> bool:
-    if settings.admin_user_id is None or message.from_user is None:
-        return False
-    return message.from_user.id == settings.admin_user_id
+class EditTopicStates(StatesGroup):
+    # Wizard edits fields of an existing topic one by one; each field accepts
+    # /skip to keep the current value.
+    name = State()
+    description = State()
+    material = State()
+    prompts_version = State()
 
 
 @router.message(Command("admin"))
@@ -45,6 +49,7 @@ async def handle_admin(message: Message, settings: Settings) -> None:
         "/new_topic — создать новую тему обучения\n"
         "/import_topic [id] — загрузить темы из topics/*.json в базу (перезапись)\n"
         "/list_topics — список тем\n"
+        "/edit_topic <id> — отредактировать существующую тему\n"
         "/delete_topic <id> — удалить тему\n"
         "/set_topic <id> — сделать тему активной по умолчанию"
     )
@@ -312,4 +317,148 @@ async def handle_set_default_topic(
     await message.answer(
         f"Тема по умолчанию изменена на «{topic.name}».\n\n"
         f"Отправьте /start, чтобы начать обучение по новой теме."
+    )
+
+
+@router.message(Command("edit_topic"))
+async def handle_edit_topic_start(
+    message: Message,
+    state: FSMContext,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    if not _is_admin(message, settings):
+        await message.answer("Эта команда доступна только администратору.")
+        return
+
+    args = message.text.split(maxsplit=1) if message.text else []
+    if len(args) < 2:
+        await message.answer("Укажите id темы: /edit_topic <id>. Список: /list_topics")
+        return
+
+    topic_id = args[1].strip().lstrip("/")
+    async with session_factory() as session:
+        repository = TrainingTopicRepository(session)
+        topic = await repository.get_by_id(topic_id)
+        if topic is None:
+            await message.answer(f"Тема '{topic_id}' не найдена. Список: /list_topics")
+            return
+
+    # The DB record is the merge base: the wizard keeps every field the
+    # operator skips and sends only changed fields through create_or_update
+    # (which otherwise overwrites ALL fields from the wizard data alone).
+    await state.set_state(EditTopicStates.name)
+    await state.update_data(
+        id=topic.id,
+        name=topic.name,
+        description=topic.description or "",
+        material=topic.material,
+        prompts_version=topic.prompts_version,
+    )
+    await message.answer(
+        f"Редактирование темы «{topic.id}».\n\n"
+        f"Шаг 1/4. Название. Текущее:\n{topic.name}\n\n"
+        "Введите новое или /skip, чтобы оставить."
+    )
+
+
+async def _ask_next_field(
+    message: Message,
+    state: FSMContext,
+    next_state: State,
+    label: str,
+    current: str,
+) -> None:
+    await state.set_state(next_state)
+    await message.answer(
+        f"{label}. Текущее:\n{current[:500]}\n\n"
+        "Введите новое значение или /skip, чтобы оставить."
+    )
+
+
+@router.message(EditTopicStates.name, F.text)
+async def handle_edit_topic_name(message: Message, state: FSMContext, settings: Settings) -> None:
+    text = (message.text or "").strip()
+    if text != "/skip":
+        if len(text) < 2:
+            await message.answer("Название должно быть не короче 2 символов. Попробуйте ещё раз.")
+            return
+        await state.update_data(name=text)
+    data = await state.get_data()
+    await _ask_next_field(message, state, EditTopicStates.description, "Шаг 2/4. Описание", data["description"])
+
+
+@router.message(EditTopicStates.description, F.text)
+async def handle_edit_topic_description(message: Message, state: FSMContext, settings: Settings) -> None:
+    text = (message.text or "").strip()
+    if text != "/skip":
+        if len(text) < 10:
+            await message.answer("Описание должно быть не короче 10 символов. Попробуйте ещё раз.")
+            return
+        await state.update_data(description=text)
+    data = await state.get_data()
+    await _ask_next_field(message, state, EditTopicStates.material, "Шаг 3/4. Материал", data["material"])
+
+
+@router.message(EditTopicStates.material, F.text)
+async def handle_edit_topic_material(message: Message, state: FSMContext, settings: Settings) -> None:
+    text = (message.text or "").strip()
+    if text != "/skip":
+        if len(text) < 10:
+            await message.answer("Материал должен быть не короче 10 символов. Попробуйте ещё раз.")
+            return
+        await state.update_data(material=text)
+    data = await state.get_data()
+    await _ask_next_field(
+        message,
+        state,
+        EditTopicStates.prompts_version,
+        "Шаг 4/4. Версия промптов",
+        data["prompts_version"],
+    )
+
+
+@router.message(EditTopicStates.prompts_version, F.text)
+async def handle_edit_topic_prompts_version(
+    message: Message,
+    state: FSMContext,
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    text = (message.text or "").strip()
+    if text != "/skip":
+        # Mirrors PromptLoader: a version is usable when
+        # prompts/<version>/system.md exists, otherwise sessions would crash
+        # on /start with FileNotFoundError.
+        version_dir = Path(settings.prompts_dir) / text
+        if not (version_dir / "system.md").is_file():
+            await message.answer(
+                f"Версия «{text}» недоступна: нет {settings.prompts_dir}/{text}/system.md. "
+                f"Посмотрите в {settings.prompts_dir} и попробуйте ещё раз (или /skip)."
+            )
+            return
+        await state.update_data(prompts_version=text)
+
+    data = await state.get_data()
+    topic = TrainingTopicConfig(
+        id=data["id"],
+        name=data["name"],
+        description=data["description"] or None,
+        material=data["material"],
+        prompts_version=data["prompts_version"],
+    )
+
+    async with session_factory() as session:
+        repository = TrainingTopicRepository(session)
+        try:
+            await repository.create_or_update(topic)
+        except Exception as exc:
+            logger.exception("Failed to update topic config")
+            await message.answer(f"Не удалось сохранить тему: {exc}")
+            return
+
+    await state.clear()
+    await message.answer(
+        f"✅ Тема «{topic.id}» обновлена (v.{topic.prompts_version}).\n\n"
+        "Изменения применяются на следующих /start (идущая сессия продолжает старую тему)."
     )
