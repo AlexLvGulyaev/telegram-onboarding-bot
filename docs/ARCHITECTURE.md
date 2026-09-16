@@ -1,8 +1,6 @@
 # 🏗️ Telegram Onboarding Bot · ARCHITECTURE
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** as-built после рефакторинга в универсального обучающего бота.
+<img src="screenshots/TOB_portfolio_dark.png" alt="Telegram Onboarding Bot — архитектурная витрина: Telegram, aiogram-бот, PostgreSQL, Redis FSM (DARK)">
 
 ---
 
@@ -10,7 +8,7 @@
 
 Telegram Onboarding Bot — MVP Telegram-бота для первичного обучения и тестирования сотрудников по выбранной теме.
 
-Ключевые принципы:
+Принципы:
 
 - **Один сервисный слой оркеструет диалог.** `TrainingService` владеет фазой сессии и счётчиками; LLM только понимает сообщения и генерирует реплики, код решает порядок, оценку и переходы.
 - **LLM отвечает за язык, код — за жизненный цикл.** Guard-логика в `TrainingService.apply_ai_turn` не позволяет модели нарушить фазы (регресс `testing → learning`, досрочный финал), даже если JSON-ответ утверждает иное.
@@ -349,7 +347,7 @@ flowchart LR
 
 ---
 
-## 📚 Связанные документы
+## 📚 12. Связанные документы
 
 - [🏠 `README.md`](../README.md) — главная страница проекта.
 - [📝 `docs/PROMPT_ARCHITECTURE.md`](PROMPT_ARCHITECTURE.md) — двухслойная архитектура промпта.
@@ -360,3 +358,9 @@ flowchart LR
 - [🔐 `docs/SECURITY_NOTES.md`](SECURITY_NOTES.md) — безопасность, RBAC, персональные данные.
 - [📋 `docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — план реализации.
 - [📊 `docs/PROJECT_STATE.md`](PROJECT_STATE.md) — паспорт состояния проекта.
+
+---
+
+**Статус:** as-built после рефакторинга в универсального обучающего бота
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)

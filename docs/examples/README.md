@@ -1,9 +1,5 @@
 # 📦 Telegram Onboarding Bot · Examples
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** as-built
-
 ---
 
 ## 🎯 1. Назначение
@@ -36,3 +32,9 @@
 - [🔌 `docs/API_CONTRACT.md`](../API_CONTRACT.md) — контракты OpenAI / Telegram / LLM-хода.
 - [📝 `docs/PROMPT_ARCHITECTURE.md`](../PROMPT_ARCHITECTURE.md) — двухслойная архитектура промпта и схема ответа.
 - [🧪 `docs/TESTING.md`](../TESTING.md) — результаты E2E-прогонов.
+
+---
+
+**Статус:** as-built
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](../CHANGE_LOG.md#-1-история-изменений-документации)

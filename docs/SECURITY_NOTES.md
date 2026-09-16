@@ -1,9 +1,5 @@
 # 🔐 Telegram Onboarding Bot · SECURITY_NOTES
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** as-built
-
 > 📌 **SOT:** Описано по фактической реализации (`config/settings.py`,
 > `bot/handlers/admin.py`, `services/ai_training_service.py`,
 > `.gitignore`). Если документация противоречит коду — исправляется
@@ -142,3 +138,9 @@ git diff --cached --name-only
 - [🔌 `docs/API_CONTRACT.md`](API_CONTRACT.md) — контракты с внешними API.
 - [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — управление темами и RBAC.
 - [📊 `docs/PROJECT_STATE.md`](PROJECT_STATE.md) — паспорт состояния проекта.
+
+---
+
+**Статус:** as-built
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)

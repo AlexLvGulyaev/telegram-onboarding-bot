@@ -1,10 +1,5 @@
 # ✅ Telegram Onboarding Bot · DEPLOYMENT_VALIDATION_REPORT
 
-**Проект:** telegram-onboarding-bot
-**Дата валидации:** 2026-08-30
-**Валидирующий:** AI-агент APL (коммутация и Telegram-шаги — владелец, A. Gulyaev)
-**Статус:** ✅ PASS — проект воспроизведён с нуля в чистом окружении
-
 > 📌 Deployment Validation: проект развёрнут с нуля по `DEPLOYMENT_GUIDE.md`
 > в изолированном чистом окружении (Docker-in-Docker, свежий клон публичного
 > репозитория), включая сквозной учебный диалог под реальным LLM. Боевые
@@ -39,7 +34,7 @@ Docker Compose v5.4.0 (внутри dind), свежий `git clone` публич
 > После добавления дельта перенесена на клон, образ пересобран, smoke
 > продолжен поверх новой сборки.
 
-**Credentials:** токен тест-бота `@PEcb06TEST_bot` (getMe-верификация) и ключ
+**Credentials:** токен тест-бота `@TEST_bot` (getMe-верификация) и ключ
 OpenAI перенесены программно в env-файл 0600; значения нигде не печатались и
 не попали в отчёт. Боевой бот TOB не затрагивался (отдельный polling-конфликт).
 
@@ -82,7 +77,7 @@ OpenAI перенесены программно в env-файл 0600; знач�
 | 1 | §6: `cp .env.example .env`, заполнить | Файл собран программно (токены из env-источников) | `.env` со всеми переменными §5 | `.env` создан, 0600, ADMIN_USER_ID владельца | PASS | |
 | 2 | §6: `docker compose up --build -d` | Сборка из чистого клона | Сборка без ошибок, 3 сервиса | Компоновка OK, db+redis healthy, bot started | PASS | Находка: предупреждение compose про устаревший `version` (см. §7); фикс — отдельный коммит `95f951a` |
 | 3 | §9.1: `docker compose ps` | Проверка статусов | `db`, `redis`, `bot` Up/healthy | db healthy, redis healthy, bot Up, стабильно (без рестартов) | PASS | |
-| 4 | §9.2: логи бота | Чтение логов | `Start polling for bot @…` + `FSM storage: Redis` | `FSM storage: Redis (redis://redis:6379/0)`, `Run polling for bot @PEcb06TEST_bot id=8857277567` | PASS | |
+| 4 | §9.2: логи бота | Чтение логов | `Start polling for bot @…` + `FSM storage: Redis` | `FSM storage: Redis (redis://redis:6379/0)`, `Run polling for bot @TEST_bot id=8857277567` | PASS | |
 | 5 | §9.3: `/import_topic` (админ) | Отправлено владельцем | «Импортировано/обновлено тем: 2» | Импортированы customer-service, onboarding (v1) | PASS | |
 | 6 | §9.4: `/list_topics` | Отправлено владельцем | Темы в списке, у активной ✅ | Обе темы в списке | PASS | |
 | 7 | `/help` | Отправлено владельцем | Справка: пользовательские команды (+блок админ-команд) | Справка выдана с админ-блоком | PASS | Команда добавлена в середине прогона по решению владельца (§7) |
@@ -123,7 +118,7 @@ OpenAI перенесены программно в env-файл 0600; знач�
 
 ### 5.1. Telegram
 
-- [x] Telegram Bot Token валиден (getMe: `@PEcb06TEST_bot`)
+- [x] Telegram Bot Token валиден (getMe: `@TEST_bot`)
 - [x] Long-polling запущен, конфликтов polling нет (боевые боты не затронуты)
 
 ### 5.2. OpenAI
@@ -204,3 +199,9 @@ OpenAI перенесены программно в env-файл 0600; знач�
 - [🚀 `docs/DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) — Source of Truth развёртывания.
 - [🏠 `README.md`](../README.md)
 - [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов (Verification).
+
+---
+
+**Статус:** ✅ PASS — проект воспроизведён с нуля в чистом окружении (2026-08-30)
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)

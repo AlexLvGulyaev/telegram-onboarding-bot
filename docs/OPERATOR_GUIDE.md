@@ -1,9 +1,5 @@
 # 🎛️ Telegram Onboarding Bot · OPERATOR_GUIDE
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** Руководство оператора/администратора, управляющего темами обучения.
-
 > 📌 **SOT:** Сценарии описаны по фактической реализации бота
 > (`bot/handlers/admin.py`, `bot/handlers/onboarding.py`). Если поведение
 > бота расходится с этим руководством — исправляется руководство.
@@ -204,3 +200,9 @@ docker compose exec db psql -U postgres -d onboarding -c \
 - [🔐 `docs/SECURITY_NOTES.md`](SECURITY_NOTES.md) — секреты, RBAC, персональные данные.
 - [📋 `docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) — технический план.
 - [🧪 `docs/TESTING.md`](TESTING.md) — результаты тестирования.
+
+---
+
+**Статус:** Руководство оператора/администратора, управляющего темами обучения
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)

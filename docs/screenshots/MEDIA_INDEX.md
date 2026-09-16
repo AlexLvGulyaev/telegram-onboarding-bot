@@ -1,10 +1,5 @@
 # 🖼️ Telegram Onboarding Bot · MEDIA_INDEX
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** Каталог публичных медиаматериалов портфолио. Скриншоты добавляются
-по мере съёмки.
-
 > 📌 **SOT:** Архитектурные схемы реализуются в Mermaid внутри Markdown (см.
 > `ARCHITECTURE.md`, `PROMPT_ARCHITECTURE.md`) — это не изображения и здесь не
 > каталогируются. Здесь — только растровые медиа (скриншоты Telegram-диалогов,
@@ -37,6 +32,7 @@ MEDIA_INDEX — единый каталог медиаматериалов пр�
 | `admin` | Управление темами в боте | `TOB_admin_new_topic.png` |
 | `result` | Результат в PostgreSQL / итог теста | `TOB_result_db_rows.png` |
 | `demo` | Демонстрационные GIF/видео | `TOB_demo_walkthrough.gif` |
+| `portfolio` | Портфельные hero-иллюстрации витрины AI Portfolio (не привязаны к контуру интерфейса) | `TOB_portfolio_light.png` |
 
 > ❌ Архитектурные схемы (`arch`) — в Mermaid внутри Markdown, не PNG.
 > См. `ARCHITECTURE.md` §1, §4.
@@ -52,6 +48,7 @@ docs/
     ├── TOB_ui_*.png          # Диалоги: обучение, тест, итог
     ├── TOB_admin_*.png       # Админка: темы
     ├── TOB_result_*.png     # Результаты в БД
+    ├── TOB_portfolio_*.png    # Портфельные hero-иллюстрации (витрина)
     └── TOB_demo_*.gif        # Демонстрация (опц.)
 ```
 
@@ -73,8 +70,8 @@ GitHub. Внутренние свидетельства тестирования
 | 6 | `TOB_admin_new_topic.png` | `admin` | Создание темы через `/new_topic`: пошаговый FSM-диалог (id → название → описание → материал) → «✅ Тема сохранена» | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `E2E_SCENARIOS.md` |
 | 7 | `TOB_admin_list_set.png` | `admin` | Управление темами: `/list_topics` (список с отметкой активной) → `/set_topic <id>` (активация темы по умолчанию) | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `E2E_SCENARIOS.md` |
 | 8 | `TOB_admin_denied.png` | `admin` | RBAC: админ-команда (`/admin`, `/new_topic`) от не-администратора отклоняется — «Эта команда доступна только администратору» | `SYSTEM_DEMO.md`, `OPERATOR_GUIDE.md`, `SECURITY_NOTES.md` |
-| 9 | `TOB_portfolio_light.png` | `ui` | Портфельная иллюстрация LIGHT — пользовательский сценарий (бриф: `task_history/2026-08-23_task-portfolio-illustrations-brief.md`) | `README.md`, бизнес-материалы портфолио |
-| 10 | `TOB_portfolio_dark.png` | `admin` | Портфельная иллюстрация DARK — инженерный сценарий (бриф №2 из той же задачи) | Бизнес-материалы портфолио |
+| 9 | `TOB_portfolio_light.png` | `portfolio` | Витрина кейса LIGHT: чат обучения в Telegram, тест и результат — hero-иллюстрация README | `README.md` (hero) |
+| 10 | `TOB_portfolio_dark.png` | `portfolio` | Та же витрина DARK — hero-иллюстрация ARCHITECTURE.md | `docs/ARCHITECTURE.md` (hero) |
 
 ---
 
@@ -82,7 +79,8 @@ GitHub. Внутренние свидетельства тестирования
 
 | Документ | Категории медиа |
 |----------|-----------------|
-| `README.md` | `ui`, `demo` — диалог и демонстрация работы |
+| `README.md` | `portfolio` (hero LIGHT), `ui`, `demo` — диалог и демонстрация работы |
+| `docs/ARCHITECTURE.md` | `portfolio` (hero DARK) — архитектурная витрина |
 | `docs/SYSTEM_DEMO.md` | `ui`, `admin`, `result` — продукт как работающая система |
 | `docs/E2E_SCENARIOS.md` | `ui`, `admin` — иллюстрации сценариев |
 | `docs/TESTING.md` | `result` — записи в БД, итоги прогонов |
@@ -111,3 +109,9 @@ GitHub. Внутренние свидетельства тестирования
 - [🎬 `docs/E2E_SCENARIOS.md`](../E2E_SCENARIOS.md)
 - [🧪 `docs/TESTING.md`](../TESTING.md)
 - [🏗️ `docs/ARCHITECTURE.md`](../ARCHITECTURE.md) — архитектурные схемы в Mermaid.
+
+---
+
+**Статус:** актуален; скриншоты — human-in-the-loop, снимаются по тезисам каталога
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](../CHANGE_LOG.md#-1-история-изменений-документации)

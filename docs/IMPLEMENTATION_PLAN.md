@@ -1,9 +1,5 @@
 # 📋 Telegram Onboarding Bot · IMPLEMENTATION_PLAN
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** as-built. Универсальная архитектура тем и промптов реализована, E2E-дефекты устранены и подтверждены прогонами. До публикации остаётся Deployment Validation в чистом окружении.
-
 ---
 
 ## 🎯 1. Архитектура решения
@@ -185,7 +181,7 @@ flowchart TD
 
 ---
 
-## 📚 Связанные документы
+## 📚 7. Связанные документы
 
 - [🏠 `README.md`](../README.md) — главная страница проекта.
 - [🏗️ `docs/ARCHITECTURE.md`](ARCHITECTURE.md) — архитектура системы.
@@ -195,3 +191,9 @@ flowchart TD
 - [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — управление темами.
 - [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов и дефекты.
 - [📊 `docs/PROJECT_STATE.md`](PROJECT_STATE.md) — паспорт состояния проекта.
+
+---
+
+**Статус:** as-built; Deployment Validation пройдена в чистом окружении (30.08, PASS)
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)

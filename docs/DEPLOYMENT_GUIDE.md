@@ -1,9 +1,5 @@
 # 🚀 Telegram Onboarding Bot · DEPLOYMENT_GUIDE
 
-**Проект:** telegram-onboarding-bot
-**Дата:** 2026-08-11
-**Статус:** Source of Truth процесса развёртывания.
-
 ---
 
 ## 🎯 1. Назначение
@@ -338,11 +334,6 @@ docker compose down -v
 
 ---
 
-## 📚 Связанные документы
-
-- [🏠 `README.md`](../README.md) — главная страница проекта.
-- [🏗️ `docs/ARCHITECTURE.md`](ARCHITECTURE.md) — архитектура системы.
-- [📖 `docs/USER_GUIDE.md`](USER_GUIDE.md) — как пройти обучение сотруднику.
-- [🎛️ `docs/OPERATOR_GUIDE.md`](OPERATOR_GUIDE.md) — как управлять темами оператору.
-- [🧪 `docs/TESTING.md`](TESTING.md) — результаты E2E-прогонов.
-- [🔐 `docs/SECURITY_NOTES.md`](SECURITY_NOTES.md) — безопасность, RBAC, секреты.
+**Статус:** Source of Truth процесса развёртывания
+**Последнее обновление:** 2026-09-16
+**История изменений:** [📝 CHANGE_LOG.md](CHANGE_LOG.md#-1-история-изменений-документации)
